@@ -44,7 +44,16 @@ header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;b
 
 #sqlBar{display:none;padding:8px 12px;background:var(--panel2);border-bottom:1px solid var(--border);gap:8px;align-items:flex-start}
 #sqlBar.show{display:flex}
-#sqlText{flex:1;height:70px;font-family:var(--mono);font-size:12.5px;padding:6px 8px;resize:vertical}
+#sqlText{flex:1;height:90px;font-family:var(--mono);font-size:12.5px;line-height:1.45;padding:6px 8px;resize:vertical}
+#acBox{position:fixed;z-index:40;display:none;min-width:240px;max-width:460px;max-height:240px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:var(--mono);font-size:12px;padding:3px}
+#acBox .aci{display:flex;align-items:center;gap:7px;padding:3px 7px;border-radius:4px;cursor:pointer;white-space:nowrap}
+#acBox .aci.on{background:var(--sel)}
+#acBox .aci:hover:not(.on){background:var(--row-hover)}
+#acBox .acl{flex:1;overflow:hidden;text-overflow:ellipsis}
+#acBox .acl b{color:var(--accent)}
+#acBox .acd{color:var(--muted);font-size:11px;font-family:var(--font)}
+#acBox .acb{width:16px;height:16px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:var(--font);color:#fff;flex:none}
+.ac-col{background:#2f8f6b}.ac-tbl{background:#2f6fde}.ac-view{background:#7a5bd6}.ac-kw{background:#b5761b}.ac-fn{background:#c0477a}
 
 main{flex:1;display:flex;min-height:0}
 #gridWrap{flex:1;overflow:auto;position:relative;min-width:0}
@@ -111,8 +120,8 @@ footer select{height:26px;padding:2px 6px}
   <input type="file" id="fileIn" accept=".db,.sqlite,.sqlite3,.db3,*/*" hidden>
 </header>
 <div id="sqlBar">
-  <textarea id="sqlText" spellcheck="false" placeholder="SELECT * FROM ... (Ctrl+Enter to run)"></textarea>
-  <div style="display:flex;flex-direction:column;gap:6px"><button class="primary" id="runSql">Run ▶</button><span class="lbl">Ctrl+Enter</span></div>
+  <textarea id="sqlText" spellcheck="false" placeholder="SELECT * FROM ...   (Ctrl+Space = suggestions, Tab/Enter = accept, Ctrl+Enter = run)"></textarea>
+  <div style="display:flex;flex-direction:column;gap:6px"><button class="primary" id="runSql">Run ▶</button><span class="lbl">Ctrl+Enter</span><span class="lbl">Ctrl+Space</span></div>
 </div>
 <main>
   <div id="gridWrap">
@@ -448,6 +457,7 @@ function fillTables(){
     const o=document.createElement('option'); o.value=n; o.textContent=n+'  ('+c+')'; groups[t].appendChild(o);
   }
   for(const g of Object.values(groups)) if(g.children.length) sel.appendChild(g);
+  buildSchema(items);
   sel.disabled=!items.length; $('search').disabled=!items.length;
   if(!items.length){status('No tables found');renderGrid([],[]);return}
   const last=store.get('sqlb.table',''); const pick=items.some(i=>i[0]===last)?last:(items.find(i=>i[0]!=='sqlite_sequence')||items[0])[0];
@@ -561,7 +571,6 @@ function setMode(m){
 $('tabBrowse').onclick=()=>{setMode('browse');if(st.table)loadPage()};
 $('tabSql').onclick=()=>{setMode('sql');if(!$('sqlText').value&&st.table)$('sqlText').value='SELECT * FROM '+q(st.table)+' LIMIT 100;';$('sqlText').focus()};
 $('sqlText').value=store.get('sqlb.sql','');
-$('sqlText').onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();runSql()}};
 $('runSql').onclick=runSql;
 function runSql(){
   if(!db){status('Open a database first',true);return}
@@ -576,6 +585,119 @@ function runSql(){
     $('csvBtn').disabled=!last;
   }catch(e){status(e.message,true)}
 }
+
+/* ---------- SQL autocomplete ---------- */
+const AC_KW=['SELECT','FROM','WHERE','AND','OR','NOT','IN','IS','NULL','IS NOT NULL','LIKE','GLOB','BETWEEN','EXISTS','ORDER BY','GROUP BY','HAVING','LIMIT','OFFSET','AS','ON','JOIN','LEFT JOIN','INNER JOIN','CROSS JOIN','UNION','UNION ALL','INTERSECT','EXCEPT','DISTINCT','CASE','WHEN','THEN','ELSE','END','ASC','DESC','INSERT INTO','VALUES','UPDATE','SET','DELETE FROM','CREATE TABLE','CREATE VIEW','CREATE INDEX','DROP TABLE','ALTER TABLE','WITH','COLLATE NOCASE','PRAGMA','EXPLAIN QUERY PLAN','OVER','PARTITION BY'];
+const AC_FN=['count(','sum(','avg(','min(','max(','total(','group_concat(','coalesce(','ifnull(','nullif(','iif(','length(','lower(','upper(','trim(','ltrim(','rtrim(','substr(','replace(','instr(','printf(','format(','round(','abs(','date(','time(','datetime(','julianday(','strftime(','unixepoch(','typeof(','cast(','hex(','quote(','random()','json_extract(','json_each(','row_number() OVER (','rank() OVER (','dense_rank() OVER (','lag(','lead('];
+const schema={tables:[],cols:{}}; // cols: lower(table) -> [{name,type}]
+function buildSchema(items){
+  schema.tables=items.map(([n,t])=>({name:n,type:t})); schema.cols={};
+  for(const {name} of schema.tables){try{const r=db.exec('PRAGMA table_info('+q(name)+')');
+    schema.cols[name.toLowerCase()]=r.length?r[0].values.map(v=>({name:v[1],type:(v[2]||'').replace(/\(.*\)/,'').toUpperCase()})):[]}catch(e){schema.cols[name.toLowerCase()]=[]}}
+}
+const ac={box:null,items:[],idx:0,start:0,end:0,open:false};
+const identOut=n=>/^[A-Za-z_][\w]*$/.test(n)?n:q(n);
+function refTables(text){ // tables + aliases referenced in FROM / JOIN / UPDATE / INTO
+  const map={}, used=[]; const re=/\b(?:FROM|JOIN|UPDATE|INTO)\s+("([^"]+)"|\[([^\]]+)\]|([\w]+))(?:\s+(?:AS\s+)?(?!(?:WHERE|ON|JOIN|LEFT|INNER|CROSS|GROUP|ORDER|LIMIT|SET|VALUES|UNION|NATURAL|USING|HAVING)\b)([A-Za-z_]\w*))?/gi; let m;
+  while((m=re.exec(text))){const t=m[2]||m[3]||m[4]; const real=schema.tables.find(x=>x.name.toLowerCase()===t.toLowerCase()); if(!real) continue;
+    used.push(real.name); map[real.name.toLowerCase()]=real.name; if(m[5]) map[m[5].toLowerCase()]=real.name;}
+  // comma-separated FROM lists: FROM a x, b y
+  const re2=/,\s*("([^"]+)"|([\w]+))(?:\s+(?:AS\s+)?([A-Za-z_]\w*))?/g;
+  while((m=re2.exec(text))){const t=m[2]||m[3]; const real=schema.tables.find(x=>x.name.toLowerCase()===t.toLowerCase()); if(!real) continue;
+    if(!used.includes(real.name)) used.push(real.name); map[real.name.toLowerCase()]=real.name; if(m[4]&&!/^(WHERE|ON|JOIN|GROUP|ORDER|LIMIT)$/i.test(m[4])) map[m[4].toLowerCase()]=real.name;}
+  return {map,used};
+}
+function acCompute(force){
+  const ta=$('sqlText'), pos=ta.selectionStart; if(pos!==ta.selectionEnd||!db) return null;
+  const before=ta.value.slice(0,pos);
+  // inside a string literal or comment? (count unescaped single quotes on current statement)
+  const stmt=before.slice(before.lastIndexOf(';')+1);
+  if(((stmt.match(/'/g)||[]).length%2)===1) return null;
+  if(/--[^\n]*$/.test(stmt)) return null;
+  let m=before.match(/(?:"([^"]+)"|([A-Za-z_]\w*))\.("?)(\w*)$/);
+  let items=[], prefix, start;
+  if(m){ // qualifier.col
+    const qual=(m[1]||m[2]).toLowerCase(); prefix=m[4]; start=pos-prefix.length-m[3].length;
+    const {map}=refTables(ta.value); const t=map[qual]||(schema.cols[qual]?schema.tables.find(x=>x.name.toLowerCase()===qual).name:null);
+    if(!t) return null;
+    items=schema.cols[t.toLowerCase()].map(c=>({label:c.name,ins:identOut(c.name),kind:'col',det:c.type||t}));
+  } else {
+    m=before.match(/"?(\w*)$/); prefix=m[1]; start=pos-m[0].length;
+    if(!force&&prefix.length<1) return null;
+    const pre=before.slice(0,start).replace(/\s+$/,'');
+    const tableCtx=/\b(FROM|JOIN|INTO|UPDATE|TABLE|EXISTS)$/i.test(pre)||(/,$/.test(pre)&&/\bFROM\s+[^;]*$/i.test(pre)&&!/\b(WHERE|GROUP|ORDER|ON|SELECT)\b[^;]*$/i.test(pre.slice(pre.search(/\bFROM\s+[^;]*$/i)+4)));
+    const tbl=schema.tables.map(t=>({label:t.name,ins:identOut(t.name),kind:t.type==='view'?'view':'tbl',det:(schema.cols[t.name.toLowerCase()]||[]).length+' cols'}));
+    if(tableCtx) items=tbl;
+    else{
+      const {used}=refTables(ta.value); const seen=new Set();
+      const cols=[];
+      used.forEach(t=>schema.cols[t.toLowerCase()].forEach(c=>{const k=c.name.toLowerCase();if(seen.has(k))return;seen.add(k);cols.push({label:c.name,ins:identOut(c.name),kind:'col',det:t})}));
+      const kw=AC_KW.map(k=>({label:k,ins:k+' ',kind:'kw',det:'keyword'}));
+      const fn=AC_FN.map(f=>({label:f.replace(/\($/,'()'),ins:f,kind:'fn',det:'function'}));
+      const other=[]; if(!used.length||force) schema.tables.forEach(t=>schema.cols[t.name.toLowerCase()].forEach(c=>{const k=c.name.toLowerCase();if(seen.has(k))return;seen.add(k);other.push({label:c.name,ins:identOut(c.name),kind:'col',det:t.name})}));
+      items=[...cols,...kw,...fn,...tbl,...other];
+    }
+  }
+  const p=prefix.toLowerCase();
+  let out=items;
+  if(p){const a=[],b=[];items.forEach(it=>{const l=it.label.toLowerCase();if(l.startsWith(p))a.push(it);else if(p.length>1&&l.includes(p))b.push(it)});out=a.concat(b)}
+  // hide if the only suggestion is exactly what is typed
+  if(out.length===1&&out[0].label.toLowerCase()===p&&!force) return null;
+  return out.length?{items:out.slice(0,60),start,end:pos,prefix}:null;
+}
+function caretXY(ta,pos){
+  const cs=getComputedStyle(ta), d=document.createElement('div');
+  ['boxSizing','width','paddingTop','paddingRight','paddingBottom','paddingLeft','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','tabSize','textIndent','wordSpacing'].forEach(p=>d.style[p]=cs[p]);
+  Object.assign(d.style,{position:'absolute',visibility:'hidden',whiteSpace:'pre-wrap',wordWrap:'break-word',top:'0',left:'-9999px',overflow:'hidden'});
+  d.textContent=ta.value.slice(0,pos); const s=document.createElement('span'); s.textContent=ta.value.slice(pos)||'.'; d.appendChild(s); document.body.appendChild(d);
+  const r={x:s.offsetLeft,y:s.offsetTop,h:parseFloat(cs.lineHeight)||parseFloat(cs.fontSize)*1.45}; d.remove(); return r;
+}
+function acShow(force){
+  const res=acCompute(force); if(!res){acHide();return}
+  Object.assign(ac,res,{idx:0,open:true});
+  if(!ac.box){ac.box=document.createElement('div');ac.box.id='acBox';document.body.appendChild(ac.box);
+    ac.box.addEventListener('mousedown',e=>{e.preventDefault();const it=e.target.closest('[data-k]');if(it){ac.idx=+it.dataset.k;acAccept()}});}
+  const pl=ac.prefix.length, hl=s=>{const i=s.toLowerCase().indexOf(ac.prefix.toLowerCase());return pl&&i>=0?esc(s.slice(0,i))+'<b>'+esc(s.slice(i,i+pl))+'</b>'+esc(s.slice(i+pl)):esc(s)};
+  const badge={col:'C',tbl:'T',view:'V',kw:'K',fn:'ƒ'};
+  ac.box.innerHTML=ac.items.map((it,k)=>'<div class="aci'+(k===0?' on':'')+'" data-k="'+k+'"><span class="acb ac-'+it.kind+'">'+badge[it.kind]+'</span><span class="acl">'+hl(it.label)+'</span><span class="acd">'+esc(it.det||'')+'</span></div>').join('');
+  const ta=$('sqlText'), r=ta.getBoundingClientRect(), c=caretXY(ta,ac.start);
+  let x=r.left+c.x-ta.scrollLeft, y=r.top+c.y-ta.scrollTop+c.h+2;
+  ac.box.style.display='block';
+  const bw=ac.box.offsetWidth, bh=ac.box.offsetHeight;
+  if(x+bw>innerWidth-8) x=innerWidth-8-bw;
+  if(y+bh>innerHeight-8) y=r.top+c.y-ta.scrollTop-bh-2;
+  ac.box.style.left=Math.max(8,x)+'px'; ac.box.style.top=Math.max(8,y)+'px';
+}
+function acHide(){ac.open=false;if(ac.box)ac.box.style.display='none'}
+function acMove(d){if(!ac.open)return;ac.idx=(ac.idx+d+ac.items.length)%ac.items.length;
+  ac.box.querySelectorAll('.aci').forEach((e,k)=>e.classList.toggle('on',k===ac.idx));
+  const on=ac.box.children[ac.idx]; on&&on.scrollIntoView({block:'nearest'});}
+function acAccept(){
+  const it=ac.items[ac.idx]; if(!it) return; const ta=$('sqlText');
+  ta.focus(); ta.setSelectionRange(ac.start,ac.end);
+  if(!document.execCommand('insertText',false,it.ins)) ta.setRangeText(it.ins,ac.start,ac.end,'end'); // execCommand keeps Ctrl+Z undo
+  acHide();
+  if(it.kind==='tbl'||it.kind==='view'){} // nothing extra
+}
+(function(){
+  const ta=$('sqlText');
+  ta.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();acHide();runSql();return}
+    if((e.ctrlKey||e.metaKey)&&(e.key===' '||e.code==='Space')){e.preventDefault();acShow(true);return}
+    if(!ac.open) return;
+    if(e.key==='ArrowDown'){e.preventDefault();acMove(1)}
+    else if(e.key==='ArrowUp'){e.preventDefault();acMove(-1)}
+    else if(e.key==='PageDown'){e.preventDefault();acMove(Math.min(8,ac.items.length-1-ac.idx)||0)}
+    else if(e.key==='PageUp'){e.preventDefault();acMove(-Math.min(8,ac.idx))}
+    else if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();acAccept()}
+    else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();acHide()}
+  });
+  ta.addEventListener('input',e=>{ if(e.inputType&&e.inputType.startsWith('delete')&&!ac.open) return; acShow(false)});
+  ta.addEventListener('blur',()=>setTimeout(acHide,100));
+  ta.addEventListener('click',acHide);
+  ta.addEventListener('scroll',()=>ac.open&&acShow(false));
+  addEventListener('resize',acHide);
+})();
 
 /* ---------- CSV ---------- */
 $('csvBtn').onclick=()=>{
