@@ -1864,24 +1864,38 @@ async function refreshLatestData() {
 
 /* Web / GitHub Pages auto-fetch: loads data/market_scanner.db */
 async function autoFetchDbFromDataFolder(isManual = false) {
-  const ts = Date.now();
-  // Bypass CDN & deployment delay by fetching directly from raw GitHub if hosted on GitHub Pages
   const isGitHub = location.hostname.includes('github.io');
-  const rawGhUrl = `https://raw.githubusercontent.com/mahendrakumarthakur/mahendrakumarthakur.github.io/main/data/market_scanner.db?_t=${ts}`;
-  
-  const candidates = isGitHub ? [
-    rawGhUrl,
+  let candidates = [];
+
+  // Query GitHub API for the newest commit SHA.
+  // Using the commit SHA in the URL path completely bypasses both the 5-min CDN cache and the 3-min Pages build queue!
+  if (isGitHub) {
+    try {
+      if (isManual) setStatus('info', '<span class="spinner"></span> Checking GitHub for latest commit…');
+      const apiResp = await fetch('https://api.github.com/repos/mahendrakumarthakur/mahendrakumarthakur.github.io/commits/main', {
+        headers: { 'Accept': 'application/vnd.github.v3+json' },
+        cache: 'no-store'
+      });
+      if (apiResp.ok) {
+        const commitData = await apiResp.json();
+        if (commitData && commitData.sha) {
+          candidates.push(`https://raw.githubusercontent.com/mahendrakumarthakur/mahendrakumarthakur.github.io/${commitData.sha}/data/market_scanner.db`);
+        }
+      }
+    } catch (_) {}
+  }
+
+  const ts = Date.now();
+  candidates.push(
     `data/market_scanner.db?_t=${ts}`,
+    `https://raw.githubusercontent.com/mahendrakumarthakur/mahendrakumarthakur.github.io/main/data/market_scanner.db?_t=${ts}`,
     `market_scanner.db?_t=${ts}`
-  ] : [
-    `data/market_scanner.db?_t=${ts}`,
-    `market_scanner.db?_t=${ts}`,
-    rawGhUrl
-  ];
+  );
 
   for (const path of candidates) {
     try {
-      if (isManual) setStatus('info', `<span class="spinner"></span> Fetching ${path.split('?')[0]}…`);
+      const label = path.includes('/') ? path.split('/').pop().split('?')[0] : path;
+      if (isManual) setStatus('info', `<span class="spinner"></span> Fetching ${label}…`);
       const resp = await fetch(path, { cache: 'no-store' });
       if (!resp.ok) continue;
       const buf = await resp.arrayBuffer();
