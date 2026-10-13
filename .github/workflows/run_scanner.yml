@@ -26,7 +26,12 @@ jobs:
 
       - name: Run NSE Sector Scanner
         run: |
-          python nse_sector_scanner.py
+          python nse_sector_scanner.py | tee scan_output.txt
+          echo "## 📊 Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          cat scan_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          rm -f scan_output.txt
 
       - name: Copy Database to data folder for GitHub Pages
         run: |
