@@ -101,13 +101,21 @@
    ===================================================================== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: 15px; }
+html {
+  font-size: 15px;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
 
 body {
   font-family: 'Inter', var(--font-sans);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   transition: background var(--transition), color var(--transition);
 }
 
@@ -121,11 +129,13 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
-  height: 52px;
+  min-height: 52px;
   position: sticky;
   top: 0;
   z-index: 100;
   box-shadow: var(--card-shadow);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .topbar-logo {
@@ -306,7 +316,13 @@ body {
 /* =====================================================================
    Main Viewer
    ===================================================================== */
-#viewer { display: none; }
+#viewer {
+  display: none;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
 
 .viewer-header {
   background: var(--header-grad);
@@ -464,6 +480,8 @@ body {
 .content-grid {
   padding: 16px 20px;
   max-width: 1400px;
+  width: 100%;
+  box-sizing: border-box;
   margin: 0 auto;
 }
 
@@ -477,6 +495,10 @@ body {
   margin-bottom: 14px;
   overflow: hidden;
   box-shadow: var(--card-shadow);
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .section-header {
   display: flex;
   align-items: center;
@@ -839,12 +861,243 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
 
-/* Responsive: stack columns on small screens */
-@media (max-width: 700px) {
+/* =====================================================================
+   Responsive Design & Mobile Viewports
+   ===================================================================== */
+@media (max-width: 860px) {
   .section-body { grid-template-columns: 1fr; }
   .section-body > .col:first-child { border-right: none; border-bottom: 1px solid var(--border); }
-  .controls-bar { gap: 8px; }
-  .ctrl-group { min-width: 130px; }
+}
+
+@media (max-width: 768px) {
+  /* Topbar mobile wrap */
+  .topbar {
+    min-height: 48px;
+    height: auto;
+    padding: 8px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .topbar-logo {
+    font-size: .84rem;
+    flex: 1 1 auto;
+  }
+  .topbar-sep, .topbar-spacer {
+    display: none;
+  }
+  #db-indicator {
+    font-size: .72rem;
+    padding: 4px 8px;
+    max-width: 60%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #btn-cloud-sync {
+    font-size: .74rem;
+    padding: 4px 8px;
+    margin-right: 0 !important;
+    margin-left: auto;
+  }
+  .theme-pills {
+    padding: 2px;
+    margin-left: auto;
+  }
+  .theme-pill {
+    padding: 2px 7px;
+    font-size: .70rem;
+  }
+
+  /* Viewer header on mobile */
+  .viewer-header {
+    padding: 10px 12px;
+  }
+  .nifty-strip {
+    gap: 10px;
+    align-items: baseline;
+  }
+  .nifty-ltp {
+    font-size: 1.25rem;
+  }
+  .nifty-change {
+    font-size: .88rem;
+    padding: 2px 6px;
+  }
+  .nifty-meta {
+    margin-left: 0;
+    text-align: left;
+    width: 100%;
+    font-size: .72rem;
+    border-top: 1px dashed var(--border);
+    padding-top: 6px;
+    margin-top: 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* Controls bar on mobile */
+  .controls-bar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .ctrl-group {
+    min-width: 0;
+    width: 100%;
+  }
+  .ctrl-group.ctrl-mini {
+    flex: 1 1 80px;
+    width: auto;
+  }
+  .ctrl-select-wrap {
+    width: 100%;
+    display: flex;
+  }
+  .ctrl-select {
+    max-width: 100%;
+    width: 100%;
+    flex: 1;
+    font-size: .80rem;
+  }
+  .search-input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .ctrl-num {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .ctrl-sep, .controls-spacer {
+    display: none;
+  }
+  .controls-bar .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 7px 10px;
+    font-size: .78rem;
+  }
+
+  /* Filter panel on mobile */
+  .filter-panel {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .filter-item {
+    flex: 1 1 90px;
+  }
+  .filter-item input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Content grid */
+  .content-grid {
+    padding: 10px 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Stock & F&O rows */
+  .stock-row {
+    padding: 5px 8px 5px 18px;
+    gap: 6px;
+    font-size: .78rem;
+  }
+  .stock-symbol {
+    min-width: 74px;
+    max-width: 90px;
+    font-size: .78rem;
+  }
+  .stock-pct {
+    width: 50px;
+    font-size: .76rem;
+  }
+  .stock-lot {
+    font-size: .68rem;
+  }
+  .badge {
+    padding: 1px 4px;
+    font-size: .64rem;
+  }
+
+  .futures-row {
+    padding: 5px 8px;
+    gap: 6px;
+    font-size: .78rem;
+  }
+  .futures-sym {
+    min-width: 74px;
+    font-size: .78rem;
+  }
+  .futures-pct {
+    width: 50px;
+    font-size: .76rem;
+  }
+  .futures-right {
+    gap: 6px;
+  }
+  .futures-vol, .futures-lot {
+    font-size: .68rem;
+  }
+
+  .options-row {
+    padding: 5px 8px;
+    gap: 6px;
+    font-size: .78rem;
+  }
+  .options-sym {
+    min-width: 74px;
+    font-size: .78rem;
+  }
+  .options-pct {
+    width: 50px;
+    font-size: .76rem;
+  }
+  .options-vol {
+    font-size: .68rem;
+  }
+
+  /* Legend strip */
+  .legend-strip {
+    gap: 8px 12px;
+    padding: 8px 10px;
+  }
+  .legend-item {
+    font-size: .68rem;
+  }
+
+  /* DB metadata grid */
+  .meta-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+  .meta-item {
+    padding: 8px 10px;
+  }
+  .meta-val {
+    font-size: .80rem;
+  }
+
+  /* DB Loader card */
+  .db-loader-wrap {
+    margin: 20px auto;
+    padding: 0 12px;
+  }
+  .db-loader-card {
+    padding: 24px 14px;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    padding: 10px;
+  }
+  .modal-dialog {
+    max-width: 100%;
+  }
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 
 /* =====================================================================
@@ -1228,15 +1481,15 @@ kbd {
     <div class="ctrl-sep"></div>
 
     <!-- Quick config -->
-    <div class="ctrl-group">
+    <div class="ctrl-group ctrl-mini">
       <div class="ctrl-label">Sectors / side</div>
       <input type="number" class="ctrl-num" id="cfg-sectors" value="2" min="1" max="20" oninput="onConfigChange('cfg-sectors')" onchange="onConfigChange('cfg-sectors')"/>
     </div>
-    <div class="ctrl-group">
+    <div class="ctrl-group ctrl-mini">
       <div class="ctrl-label">Stocks / sector</div>
       <input type="number" class="ctrl-num" id="cfg-stocks" value="10" min="1" max="50" oninput="onConfigChange('cfg-stocks')" onchange="onConfigChange('cfg-stocks')"/>
     </div>
-    <div class="ctrl-group">
+    <div class="ctrl-group ctrl-mini">
       <div class="ctrl-label">Futures / side</div>
       <input type="number" class="ctrl-num" id="cfg-futures" value="10" min="1" max="30" oninput="onConfigChange('cfg-futures')" onchange="onConfigChange('cfg-futures')"/>
     </div>
