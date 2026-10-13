@@ -1,0 +1,43 @@
+name: Run NSE Sector Scanner
+
+on:
+  # Manual trigger only — runs on demand when you tap "Run workflow" from your iPhone or browser
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install curl_cffi
+
+      - name: Run NSE Sector Scanner
+        run: |
+          python nse_sector_scanner.py
+
+      - name: Copy Database to data folder for GitHub Pages
+        run: |
+          mkdir -p data
+          cp market_scanner.db data/market_scanner.db
+
+      - name: Commit and Push Updated Scans
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add market_scanner.db data/market_scanner.db
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Manual scan update [skip ci]" && git push)
+
