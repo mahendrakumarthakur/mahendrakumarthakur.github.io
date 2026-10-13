@@ -1506,8 +1506,13 @@ kbd {
 
     <div class="controls-spacer"></div>
 
+    <!-- Refresh latest scans from GitHub -->
+    <button class="btn btn-primary btn-sm" onclick="refreshLatestData()" id="btn-refresh-data" title="Instantly fetch the latest scan database from GitHub">
+      🔄 Refresh
+    </button>
+
     <!-- Save / Export DB to data/ folder for GitHub Pages -->
-    <button class="btn btn-primary btn-sm" onclick="saveDbToDataFolder()" title="Save or export a copy of this database into data/market_scanner.db for your GitHub domain">
+    <button class="btn btn-secondary btn-sm" onclick="saveDbToDataFolder()" title="Save or export a copy of this database into data/market_scanner.db for your GitHub domain">
       💾 Save to data/
     </button>
 
@@ -1843,16 +1848,44 @@ async function saveDbToDataFolder() {
   }
 }
 
+/* Refresh latest scan button handler */
+async function refreshLatestData() {
+  const btn = document.getElementById('btn-refresh-data');
+  const origHtml = btn ? btn.innerHTML : '🔄 Refresh';
+  if (btn) btn.innerHTML = '<span class="spinner"></span> Syncing…';
+  const ok = await autoFetchDbFromDataFolder(true);
+  if (btn) btn.innerHTML = origHtml;
+  if (ok) {
+    showToast('⚡', 'Updated!', 'Loaded latest scan database from GitHub', '');
+  } else {
+    showToast('⚠️', 'Refresh failed', 'Could not fetch latest scans', '');
+  }
+}
+
 /* Web / GitHub Pages auto-fetch: loads data/market_scanner.db */
 async function autoFetchDbFromDataFolder(isManual = false) {
-  const candidates = ['data/market_scanner.db', 'market_scanner.db'];
+  const ts = Date.now();
+  // Bypass CDN & deployment delay by fetching directly from raw GitHub if hosted on GitHub Pages
+  const isGitHub = location.hostname.includes('github.io');
+  const rawGhUrl = `https://raw.githubusercontent.com/mahendrakumarthakur/mahendrakumarthakur.github.io/main/data/market_scanner.db?_t=${ts}`;
+  
+  const candidates = isGitHub ? [
+    rawGhUrl,
+    `data/market_scanner.db?_t=${ts}`,
+    `market_scanner.db?_t=${ts}`
+  ] : [
+    `data/market_scanner.db?_t=${ts}`,
+    `market_scanner.db?_t=${ts}`,
+    rawGhUrl
+  ];
+
   for (const path of candidates) {
     try {
-      if (isManual) setStatus('info', `<span class="spinner"></span> Fetching ${path}…`);
-      const resp = await fetch(path, { cache: 'no-cache' });
+      if (isManual) setStatus('info', `<span class="spinner"></span> Fetching ${path.split('?')[0]}…`);
+      const resp = await fetch(path, { cache: 'no-store' });
       if (!resp.ok) continue;
       const buf = await resp.arrayBuffer();
-      await loadBuffer(buf, path);
+      await loadBuffer(buf, 'data/market_scanner.db');
       return true;
     } catch (_) {}
   }
