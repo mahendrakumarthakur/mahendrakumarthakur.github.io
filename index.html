@@ -24,55 +24,175 @@
   --transition: .18s ease;
 }
 
-/* ── DARK THEME (default) ── */
+/* ── 1. DARK THEME (from index_dbBrowswer.html) ── */
 [data-theme="dark"] {
-  --bg:        #0d1117;
-  --bg2:       #161b22;
-  --bg3:       #21262d;
-  --bg4:       #30363d;
-  --border:    #30363d;
-  --text:      #e6edf3;
-  --text2:     #8b949e;
-  --text3:     #6e7681;
-  --accent:    #388bfd;
-  --accent2:   #1f6feb;
+  --bg:        #16181d;
+  --bg2:       #1f2229;
+  --bg3:       #272b34;
+  --bg4:       #363b47;
+  --border:    #363b47;
+  --text:      #e4e7ee;
+  --text2:     #8e96a8;
+  --text3:     #666e7e;
+  --accent:    #5b9bff;
+  --accent2:   #3b82f6;
   --green:     #3fb950;
-  --green-bg:  rgba(63,185,80,.12);
-  --red:       #f85149;
-  --red-bg:    rgba(248,81,73,.12);
-  --yellow:    #d29922;
-  --yellow-bg: rgba(210,153,34,.12);
-  --cyan:      #39d3f2;
-  --cyan-bg:   rgba(57,211,242,.10);
-  --header-grad: linear-gradient(135deg,#0d1117 0%,#161b22 100%);
-  --card-shadow: 0 2px 8px rgba(0,0,0,.4);
+  --green-bg:  rgba(63,185,80,.14);
+  --red:       #ff6b5e;
+  --red-bg:    rgba(255,107,94,.14);
+  --yellow:    #e3b341;
+  --yellow-bg: rgba(227,179,65,.14);
+  --cyan:      #56d4dd;
+  --cyan-bg:   rgba(86,212,221,.12);
+  --header-grad: linear-gradient(135deg,#16181d 0%,#1f2229 100%);
+  --card-shadow: 0 2px 8px rgba(0,0,0,.45);
 }
 
-/* ── LIGHT THEME ── */
+/* ── 2. LIGHT THEME (from index_dbBrowswer.html) ── */
 [data-theme="light"] {
-  --bg:        #f6f8fa;
+  --bg:        #f4f6f9;
   --bg2:       #ffffff;
-  --bg3:       #f0f2f5;
-  --bg4:       #e1e4e8;
-  --border:    #d0d7de;
-  --text:      #1a1e23;
-  --text2:     #57606a;
-  --text3:     #8c959f;
-  --accent:    #0969da;
-  --accent2:   #0550ae;
+  --bg3:       #eef1f5;
+  --bg4:       #d8dde6;
+  --border:    #d8dde6;
+  --text:      #1d2330;
+  --text2:     #6b7385;
+  --text3:     #a0a7b4;
+  --accent:    #2f6fde;
+  --accent2:   #1f57b8;
   --green:     #1a7f37;
-  --green-bg:  rgba(26,127,55,.10);
-  --red:       #cf222e;
-  --red-bg:    rgba(207,34,46,.10);
-  --yellow:    #9a6700;
-  --yellow-bg: rgba(154,103,0,.10);
+  --green-bg:  rgba(26,127,55,.12);
+  --red:       #c0392b;
+  --red-bg:    rgba(192,57,43,.12);
+  --yellow:    #b5761b;
+  --yellow-bg: rgba(181,118,27,.12);
   --cyan:      #0598bc;
-  --cyan-bg:   rgba(5,152,188,.10);
-  --header-grad: linear-gradient(135deg,#f6f8fa 0%,#eef1f5 100%);
+  --cyan-bg:   rgba(5,152,188,.12);
+  --header-grad: linear-gradient(135deg,#f4f6f9 0%,#eef1f5 100%);
   --card-shadow: 0 2px 6px rgba(0,0,0,.08);
 }
 
-/* ── TERMINAL / HACKER THEME ── */
+/* ── 3. MIDNIGHT BLUE (from index_dbBrowswer.html) ── */
+[data-theme="midnight"] {
+  --bg:        #0d1b2a;
+  --bg2:       #13263a;
+  --bg3:       #1b3149;
+  --bg4:       #284360;
+  --border:    #284360;
+  --text:      #dbe7f3;
+  --text2:     #8aa3bd;
+  --text3:     #5f7a94;
+  --accent:    #4cc9f0;
+  --accent2:   #3aa8cc;
+  --green:     #4ade80;
+  --green-bg:  rgba(74,222,128,.14);
+  --red:       #ff7b72;
+  --red-bg:    rgba(255,123,114,.14);
+  --yellow:    #ffd166;
+  --yellow-bg: rgba(255,209,102,.14);
+  --cyan:      #4cc9f0;
+  --cyan-bg:   rgba(76,201,240,.14);
+  --header-grad: linear-gradient(135deg,#0d1b2a 0%,#13263a 100%);
+  --card-shadow: 0 2px 10px rgba(0,0,0,.5);
+}
+
+/* ── 4. SOLARIZED (from index_dbBrowswer.html) ── */
+[data-theme="solarized"] {
+  --bg:        #fdf6e3;
+  --bg2:       #fffbef;
+  --bg3:       #eee8d5;
+  --bg4:       #e0d8bf;
+  --border:    #e0d8bf;
+  --text:      #3b4a50;
+  --text2:     #839496;
+  --text3:     #a8a28a;
+  --accent:    #268bd2;
+  --accent2:   #1d6b9f;
+  --green:     #859900;
+  --green-bg:  rgba(133,153,0,.14);
+  --red:       #dc322f;
+  --red-bg:    rgba(220,50,47,.14);
+  --yellow:    #b58900;
+  --yellow-bg: rgba(181,137,0,.14);
+  --cyan:      #2aa198;
+  --cyan-bg:   rgba(42,161,152,.14);
+  --header-grad: linear-gradient(135deg,#fdf6e3 0%,#eee8d5 100%);
+  --card-shadow: 0 2px 6px rgba(0,0,0,.08);
+}
+
+/* ── 5. FOREST (from index_dbBrowswer.html) ── */
+[data-theme="forest"] {
+  --bg:        #eef3ee;
+  --bg2:       #ffffff;
+  --bg3:       #e1ebe1;
+  --bg4:       #c9d8cb;
+  --border:    #c9d8cb;
+  --text:      #1e2d22;
+  --text2:     #5f7466;
+  --text3:     #97a99b;
+  --accent:    #2e7d4f;
+  --accent2:   #23633e;
+  --green:     #2e7d4f;
+  --green-bg:  rgba(46,125,79,.14);
+  --red:       #b23b2e;
+  --red-bg:    rgba(178,59,46,.14);
+  --yellow:    #c48b1a;
+  --yellow-bg: rgba(196,139,26,.14);
+  --cyan:      #1b7a82;
+  --cyan-bg:   rgba(27,122,130,.14);
+  --header-grad: linear-gradient(135deg,#eef3ee 0%,#e1ebe1 100%);
+  --card-shadow: 0 2px 6px rgba(0,0,0,.08);
+}
+
+/* ── 6. DRACULA (from index_dbBrowswer.html) ── */
+[data-theme="dracula"] {
+  --bg:        #21222c;
+  --bg2:       #282a36;
+  --bg3:       #343746;
+  --bg4:       #44475a;
+  --border:    #44475a;
+  --text:      #f8f8f2;
+  --text2:     #9aa0c3;
+  --text3:     #6272a4;
+  --accent:    #bd93f9;
+  --accent2:   #9a6fe0;
+  --green:     #50fa7b;
+  --green-bg:  rgba(80,250,123,.14);
+  --red:       #ff5555;
+  --red-bg:    rgba(255,85,85,.14);
+  --yellow:    #f1fa8c;
+  --yellow-bg: rgba(241,250,140,.14);
+  --cyan:      #8be9fd;
+  --cyan-bg:   rgba(139,233,253,.14);
+  --header-grad: linear-gradient(135deg,#21222c 0%,#282a36 100%);
+  --card-shadow: 0 2px 10px rgba(0,0,0,.55);
+}
+
+/* ── 7. HIGH CONTRAST (from index_dbBrowswer.html) ── */
+[data-theme="contrast"] {
+  --bg:        #000000;
+  --bg2:       #0d0d0d;
+  --bg3:       #1a1a1a;
+  --bg4:       #262626;
+  --border:    #ffffff;
+  --text:      #ffffff;
+  --text2:     #cccccc;
+  --text3:     #999999;
+  --accent:    #ffd400;
+  --accent2:   #ffaa00;
+  --green:     #00ff66;
+  --green-bg:  rgba(0,255,102,.16);
+  --red:       #ff3333;
+  --red-bg:    rgba(255,51,51,.16);
+  --yellow:    #ffd400;
+  --yellow-bg: rgba(255,212,0,.16);
+  --cyan:      #00ffff;
+  --cyan-bg:   rgba(0,255,255,.16);
+  --header-grad: linear-gradient(135deg,#000 0%,#111 100%);
+  --card-shadow: 0 0 10px rgba(255,255,255,.2);
+}
+
+/* ── 8. TERMINAL / HACKER ── */
 [data-theme="terminal"] {
   --bg:        #0a0a0a;
   --bg2:       #111111;
@@ -85,15 +205,15 @@
   --accent:    #00ff41;
   --accent2:   #00cc33;
   --green:     #00ff41;
-  --green-bg:  rgba(0,255,65,.08);
+  --green-bg:  rgba(0,255,65,.10);
   --red:       #ff3333;
-  --red-bg:    rgba(255,51,51,.08);
+  --red-bg:    rgba(255,51,51,.10);
   --yellow:    #ffdd00;
-  --yellow-bg: rgba(255,221,0,.08);
+  --yellow-bg: rgba(255,221,0,.10);
   --cyan:      #00ffff;
-  --cyan-bg:   rgba(0,255,255,.06);
+  --cyan-bg:   rgba(0,255,255,.08);
   --header-grad: linear-gradient(135deg,#000000 0%,#0a1a0a 100%);
-  --card-shadow: 0 0 12px rgba(0,255,65,.08);
+  --card-shadow: 0 0 12px rgba(0,255,65,.1);
 }
 
 /* =====================================================================
@@ -153,35 +273,40 @@ body {
 .topbar-spacer { flex: 1; }
 
 /* =====================================================================
-   Theme Switcher
+   Theme Switcher (Dropdown from index_dbBrowswer.html)
    ===================================================================== */
-.theme-pills {
+.theme-select-wrap {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
   background: var(--bg3);
-  padding: 3px;
-  border-radius: 20px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
+  transition: border-color var(--transition);
 }
-.theme-pill {
-  border: none;
+.theme-select-wrap:hover {
+  border-color: var(--accent);
+}
+.theme-lbl {
+  font-size: .85rem;
+  line-height: 1;
+}
+.theme-select {
   background: transparent;
-  color: var(--text2);
-  padding: 3px 10px;
-  border-radius: 14px;
-  cursor: pointer;
-  font-size: .75rem;
+  border: none;
+  color: var(--text);
+  font-size: .78rem;
   font-weight: 600;
-  transition: all var(--transition);
-  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  padding: 2px 0;
+  font-family: inherit;
 }
-.theme-pill.active,
-.theme-pill:hover {
+.theme-select option {
   background: var(--bg2);
-  color: var(--accent);
-  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  color: var(--text);
 }
-.theme-pill.active { color: var(--accent); }
 
 /* =====================================================================
    DB Loader
@@ -899,13 +1024,12 @@ body {
     margin-right: 0 !important;
     margin-left: auto;
   }
-  .theme-pills {
-    padding: 2px;
+  .theme-select-wrap {
     margin-left: auto;
+    padding: 2px 6px;
   }
-  .theme-pill {
-    padding: 2px 7px;
-    font-size: .70rem;
+  .theme-select {
+    font-size: .72rem;
   }
 
   /* Viewer header on mobile */
@@ -1295,10 +1419,18 @@ kbd {
     ☁️ Cloud Sync
   </button>
 
-  <div class="theme-pills">
-    <button class="theme-pill active" data-theme="dark"  onclick="setTheme('dark')">Dark</button>
-    <button class="theme-pill"        data-theme="light" onclick="setTheme('light')">Light</button>
-    <button class="theme-pill"        data-theme="terminal" onclick="setTheme('terminal')">Terminal</button>
+  <div class="theme-select-wrap">
+    <span class="theme-lbl">🎨</span>
+    <select id="themeSel" onchange="setTheme(this.value)" class="theme-select" title="Switch Theme">
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+      <option value="midnight">Midnight Blue</option>
+      <option value="solarized">Solarized</option>
+      <option value="forest">Forest</option>
+      <option value="dracula">Dracula</option>
+      <option value="contrast">High Contrast</option>
+      <option value="terminal">Terminal</option>
+    </select>
   </div>
 </div>
 
@@ -1568,9 +1700,9 @@ let currentScanId = null;
    ──────────────────────────────────────────── */
 function setTheme(t) {
   document.body.setAttribute('data-theme', t);
-  document.querySelectorAll('.theme-pill').forEach(b => {
-    b.classList.toggle('active', b.dataset.theme === t);
-  });
+  document.documentElement.setAttribute('data-theme', t);
+  const sel = document.getElementById('themeSel');
+  if (sel) sel.value = t;
   localStorage.setItem('nse_theme', t);
 }
 (function () {
