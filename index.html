@@ -911,6 +911,116 @@ kbd {
 #scan-toast .toast-arrow { font-size: 1rem; }
 #scan-toast .toast-pos   { color: var(--text3); font-size: .72rem; }
 #scan-toast .toast-nifty { font-size: .75rem; }
+
+/* Modal overlay & dialog */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.70);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.modal-dialog {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 520px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  overflow: hidden;
+  animation: modalFadeIn 0.2s ease-out;
+}
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.modal-header {
+  padding: 14px 20px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-title {
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: 1.3rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.modal-close:hover { color: var(--red); }
+.modal-body {
+  padding: 20px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal-footer {
+  padding: 14px 20px;
+  background: var(--bg3);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.form-group {
+  margin-bottom: 14px;
+}
+.form-label {
+  display: block;
+  font-size: .73rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text2);
+  margin-bottom: 6px;
+}
+.form-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: .85rem;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.form-input:focus { border-color: var(--accent); }
+.form-hint {
+  font-size: .70rem;
+  color: var(--text3);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .80rem;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
 </style>
 </head>
 <body data-theme="dark">
@@ -926,10 +1036,80 @@ kbd {
     <span id="db-indicator-text">No DB</span>
   </div>
   <div class="topbar-spacer"></div>
+
+  <!-- Cloud Sync Button -->
+  <button class="btn btn-secondary btn-sm" onclick="openGitHubSyncModal()" id="btn-cloud-sync" style="margin-right:8px;" title="Sync database directly to your GitHub domain (mahendrakumarthakur.github.io)">
+    ☁️ Cloud Sync
+  </button>
+
   <div class="theme-pills">
     <button class="theme-pill active" data-theme="dark"  onclick="setTheme('dark')">Dark</button>
     <button class="theme-pill"        data-theme="light" onclick="setTheme('light')">Light</button>
     <button class="theme-pill"        data-theme="terminal" onclick="setTheme('terminal')">Terminal</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     GITHUB CLOUD SYNC MODAL
+     ═══════════════════════════════════════════════════════════ -->
+<div id="github-sync-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">☁️ Cloud Sync to mahendrakumarthakur.github.io</div>
+      <button class="modal-close" onclick="closeGitHubSyncModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:16px;line-height:1.5;">
+        Uploads your selected database directly to your GitHub Pages repository so you can access your scans from anywhere via
+        <a href="https://mahendrakumarthakur.github.io/" target="_blank" style="color:var(--accent);text-decoration:none;">https://mahendrakumarthakur.github.io/</a>.
+      </p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">GitHub Username</label>
+          <input type="text" class="form-input" id="gh-owner" value="mahendrakumarthakur" autocomplete="off"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Repository</label>
+          <input type="text" class="form-input" id="gh-repo" value="mahendrakumarthakur.github.io" autocomplete="off"/>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Target File Path</label>
+          <input type="text" class="form-input" id="gh-path" value="data/market_scanner.db" autocomplete="off"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Branch</label>
+          <input type="text" class="form-input" id="gh-branch" value="main" autocomplete="off"/>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">GitHub Personal Access Token (PAT)</label>
+        <input type="password" class="form-input" id="gh-token" placeholder="ghp_... or github_pat_..." autocomplete="off"/>
+        <div class="form-hint">
+          Requires <strong>Contents: Read and Write</strong> permission on your repository. Saved locally in your browser.
+          <a href="https://github.com/settings/tokens?type=beta" target="_blank" style="color:var(--accent);">Generate Token &rarr;</a>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="gh-autopush" style="accent-color:var(--accent);"/>
+          <span>⚡ Auto-push to GitHub whenever I select/open a local DB</span>
+        </label>
+      </div>
+
+      <div id="gh-status" style="margin-top:14px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary btn-sm" onclick="closeGitHubSyncModal()">Close</button>
+      <button class="btn btn-primary btn-sm" id="btn-do-push" onclick="pushDbToGitHub()">
+        🚀 Push DB to GitHub Now
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1363,6 +1543,11 @@ async function loadFile(file, name) {
     setStatus('info', '<span class="spinner"></span> Reading file…');
     const buf = await file.arrayBuffer();
     await loadBuffer(buf, name || file.name);
+
+    // Auto-push to GitHub domain if enabled
+    if (localStorage.getItem('nse_gh_autopush') === '1' && localStorage.getItem('nse_gh_token')) {
+      pushDbToGitHub(true);
+    }
   } catch (err) {
     setStatus('error', '✖ ' + err.message);
   }
@@ -1422,6 +1607,179 @@ async function autoFetchDbFromDataFolder(isManual = false) {
     setStatus('error', '✖ Could not fetch data/market_scanner.db. If running locally via file://, use Open button.');
   }
   return false;
+}
+
+/* ────────────────────────────────────────────
+   GitHub Cloud Sync (Push DB to mahendrakumarthakur.github.io)
+   ──────────────────────────────────────────── */
+function openGitHubSyncModal() {
+  loadGitHubSyncSettings();
+  document.getElementById('github-sync-modal').style.display = 'flex';
+}
+
+function closeGitHubSyncModal() {
+  document.getElementById('github-sync-modal').style.display = 'none';
+}
+
+function loadGitHubSyncSettings() {
+  const token = localStorage.getItem('nse_gh_token') || '';
+  const owner = localStorage.getItem('nse_gh_owner') || 'mahendrakumarthakur';
+  const repo  = localStorage.getItem('nse_gh_repo')  || 'mahendrakumarthakur.github.io';
+  const path  = localStorage.getItem('nse_gh_path')  || 'data/market_scanner.db';
+  const branch= localStorage.getItem('nse_gh_branch')|| 'main';
+  const autopush = localStorage.getItem('nse_gh_autopush') === '1';
+
+  const tEl = document.getElementById('gh-token');
+  const oEl = document.getElementById('gh-owner');
+  const rEl = document.getElementById('gh-repo');
+  const pEl = document.getElementById('gh-path');
+  const bEl = document.getElementById('gh-branch');
+  const aEl = document.getElementById('gh-autopush');
+
+  if (tEl) tEl.value = token;
+  if (oEl) oEl.value = owner;
+  if (rEl) rEl.value = repo;
+  if (pEl) pEl.value = path;
+  if (bEl) bEl.value = branch;
+  if (aEl) aEl.checked = autopush;
+}
+
+function setGhStatus(type, html) {
+  const el = document.getElementById('gh-status');
+  if (el) el.innerHTML = `<div class="status-badge ${type}" style="width:100%;justify-content:center;padding:10px;border-radius:var(--radius-sm);">${html}</div>`;
+}
+
+async function pushDbToGitHub(isAuto = false) {
+  const token = document.getElementById('gh-token')?.value.trim() || localStorage.getItem('nse_gh_token') || '';
+  const owner = document.getElementById('gh-owner')?.value.trim() || localStorage.getItem('nse_gh_owner') || 'mahendrakumarthakur';
+  const repo  = document.getElementById('gh-repo')?.value.trim()  || localStorage.getItem('nse_gh_repo')  || 'mahendrakumarthakur.github.io';
+  const path  = document.getElementById('gh-path')?.value.trim()  || localStorage.getItem('nse_gh_path')  || 'data/market_scanner.db';
+  const branch= document.getElementById('gh-branch')?.value.trim()|| localStorage.getItem('nse_gh_branch')|| 'main';
+
+  if (!token) {
+    if (!isAuto) {
+      setGhStatus('error', '⚠️ Please enter your GitHub Personal Access Token (PAT).');
+    }
+    return;
+  }
+  if (!currentDbBuffer) {
+    if (!isAuto) setGhStatus('error', '⚠️ No database is currently loaded. Please select or open a DB first.');
+    return;
+  }
+
+  // Persist settings
+  localStorage.setItem('nse_gh_token', token);
+  localStorage.setItem('nse_gh_owner', owner);
+  localStorage.setItem('nse_gh_repo', repo);
+  localStorage.setItem('nse_gh_path', path);
+  localStorage.setItem('nse_gh_branch', branch);
+  const autopushEl = document.getElementById('gh-autopush');
+  if (autopushEl) localStorage.setItem('nse_gh_autopush', autopushEl.checked ? '1' : '0');
+
+  const btn = document.getElementById('btn-do-push');
+  if (btn) btn.disabled = true;
+
+  if (isAuto) {
+    showToast('☁️', 'Syncing to GitHub…', 'Uploading to cloud', '');
+  } else {
+    setGhStatus('info', '<span class="spinner"></span> Converting database for GitHub API…');
+  }
+
+  try {
+    // 1. Convert Uint8Array to base64 safely
+    const base64Content = await new Promise((resolve, reject) => {
+      const blob = new Blob([currentDbBuffer]);
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    if (!isAuto) setGhStatus('info', `<span class="spinner"></span> Checking ${path} on GitHub (${owner}/${repo})…`);
+
+    // 2. Fetch existing file SHA if already exists on GitHub
+    let fileSha = null;
+    let targetBranch = branch;
+    try {
+      const checkResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${targetBranch}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json'
+        }
+      });
+      if (checkResp.status === 200) {
+        const data = await checkResp.json();
+        fileSha = data.sha;
+      } else if (checkResp.status === 404) {
+        // Maybe default branch is master instead of main
+        const repoResp = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github+json'
+          }
+        });
+        if (repoResp.ok) {
+          const repoData = await repoResp.json();
+          if (repoData.default_branch && repoData.default_branch !== targetBranch) {
+            targetBranch = repoData.default_branch;
+            const retryCheck = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${targetBranch}`, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.github+json'
+              }
+            });
+            if (retryCheck.status === 200) {
+              const data = await retryCheck.json();
+              fileSha = data.sha;
+            }
+          }
+        }
+      } else if (checkResp.status === 401 || checkResp.status === 403) {
+        const err = await checkResp.json();
+        throw new Error(err.message || 'GitHub Authentication failed. Check your token.');
+      }
+    } catch (checkErr) {
+      if (checkErr.message && checkErr.message.includes('Authentication')) throw checkErr;
+    }
+
+    if (!isAuto) setGhStatus('info', `<span class="spinner"></span> Uploading ${path} to GitHub…`);
+
+    // 3. PUT file to GitHub Contents API
+    const putResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: `Update ${path} via NSE Terminal [${new Date().toLocaleTimeString()}]`,
+        content: base64Content,
+        branch: targetBranch,
+        ...(fileSha ? { sha: fileSha } : {})
+      })
+    });
+
+    if (!putResp.ok) {
+      const err = await putResp.json();
+      throw new Error(err.message || `HTTP ${putResp.status}`);
+    }
+
+    if (!isAuto) {
+      setGhStatus('ok', `✅ <strong>Committed to ${owner}/${repo} (${path})!</strong><br>Live on <a href="https://${owner}.github.io/" target="_blank" style="color:var(--accent);">https://${owner}.github.io/</a> in ~30s.`);
+    }
+    showToast('✓', 'Synced to GitHub', `${path} live`, '');
+    const syncBtn = document.getElementById('btn-cloud-sync');
+    if (syncBtn) syncBtn.textContent = '☁️ Synced';
+  } catch (err) {
+    if (!isAuto) {
+      setGhStatus('error', `✖ Upload failed: ${err.message}`);
+    } else {
+      showToast('⚠️', 'Cloud sync failed', err.message, '');
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function setStatus(type, html) {
