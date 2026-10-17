@@ -1613,26 +1613,10 @@ kbd {
 
     <div class="ctrl-sep"></div>
 
-    <!-- Quick config -->
-    <div class="ctrl-group ctrl-mini">
-      <div class="ctrl-label">Sectors / side</div>
-      <input type="number" class="ctrl-num" id="cfg-sectors" value="2" min="1" max="20" oninput="onConfigChange('cfg-sectors')" onchange="onConfigChange('cfg-sectors')"/>
-    </div>
-    <div class="ctrl-group ctrl-mini">
-      <div class="ctrl-label">Stocks / sector</div>
-      <input type="number" class="ctrl-num" id="cfg-stocks" value="10" min="1" max="50" oninput="onConfigChange('cfg-stocks')" onchange="onConfigChange('cfg-stocks')"/>
-    </div>
-    <div class="ctrl-group ctrl-mini">
-      <div class="ctrl-label">Futures / side</div>
-      <input type="number" class="ctrl-num" id="cfg-futures" value="10" min="1" max="30" oninput="onConfigChange('cfg-futures')" onchange="onConfigChange('cfg-futures')"/>
-    </div>
-
-    <div class="ctrl-sep"></div>
-
-    <!-- Advanced filters toggle -->
+    <!-- Filters toggle -->
     <div class="ctrl-group" style="min-width:auto;">
       <div class="ctrl-label">&nbsp;</div>
-      <button class="btn btn-secondary btn-sm" onclick="toggleFilters()" id="filter-toggle-btn">
+      <button class="btn btn-secondary btn-sm" onclick="toggleFilters()" id="filter-toggle-btn" title="Toggle Filters & Configuration">
         ⚙ Filters
       </button>
     </div>
@@ -1655,6 +1639,18 @@ kbd {
 
   <!-- Advanced filter panel -->
   <div class="filter-panel" id="filter-panel">
+    <div class="filter-item">
+      <label>Sectors / side <span class="filter-hint">(top/bottom)</span></label>
+      <input type="number" id="cfg-sectors" value="2" min="1" max="20" oninput="onConfigChange('cfg-sectors')" onchange="onConfigChange('cfg-sectors')"/>
+    </div>
+    <div class="filter-item">
+      <label>Stocks / sector <span class="filter-hint">(per sector)</span></label>
+      <input type="number" id="cfg-stocks" value="10" min="1" max="50" oninput="onConfigChange('cfg-stocks')" onchange="onConfigChange('cfg-stocks')"/>
+    </div>
+    <div class="filter-item">
+      <label>Futures / side <span class="filter-hint">(top/bottom)</span></label>
+      <input type="number" id="cfg-futures" value="10" min="1" max="30" oninput="onConfigChange('cfg-futures')" onchange="onConfigChange('cfg-futures')"/>
+    </div>
     <div class="filter-item">
       <label>Max Lot Size <span class="filter-hint">(0 = all)</span></label>
       <input type="number" id="cfg-lotsize" value="1500" min="0" oninput="onConfigChange('cfg-lotsize')" onchange="onConfigChange('cfg-lotsize')"/>
@@ -1695,6 +1691,7 @@ kbd {
 let SQL = null;           // sql.js namespace
 let db  = null;           // open DB instance
 let currentScanId = null;
+let scanMetaMap = {};
 
 /* ────────────────────────────────────────────
    Theme
@@ -2291,12 +2288,13 @@ function onDateChange() {
   `, [date]);
 
   if (!rows.length) return;
+  scanMetaMap = {};
   rows[0].values.forEach(([sid, time, ltp, chg, dir], i) => {
     const opt = document.createElement('option');
     opt.value = sid;
-    const niftyStr = ltp ? `  NIFTY ${fmtNum(ltp)}  ${fmtPct(chg)}` : '';
-    opt.textContent = `${time}${niftyStr}${i === 0 ? '  ← Latest' : ''}`;
+    opt.textContent = time;
     scanSel.appendChild(opt);
+    scanMetaMap[sid] = { time, ltp, chg, dir };
   });
 
   // Auto-select latest
@@ -2425,12 +2423,11 @@ function showScanToast(dir, idx, total, dateOverride) {
   const arrow   = dir === -1 ? '→' : '←';
   const opts    = selectOptions('scan-select');
   if (!opts.length) return;
-  const label   = opts[idx]?.text?.split('  ')[0] || '';  // just the time part
+  const sid     = opts[idx]?.value;
+  const meta    = scanMetaMap[sid];
+  const label   = meta ? meta.time : (opts[idx]?.text || '');
   const pos     = `Scan ${idx + 1} / ${total}`;
-  /* Quick NIFTY lookup from the scan option text */
-  const fullTxt = opts[idx]?.text || '';
-  const niftyM  = fullTxt.match(/NIFTY ([\d,]+\.\d+)\s+([+-][\d.]+%)/);
-  const nifty   = niftyM ? `NIFTY ${niftyM[1]} ${niftyM[2]}` : '';
+  const nifty   = (meta && meta.ltp) ? `NIFTY ${fmtNum(meta.ltp)} ${fmtPct(meta.chg)}` : '';
   showToast(arrow, label, pos, nifty);
 }
 
@@ -2765,7 +2762,7 @@ function rerender() {
     <!-- SECTOR CARD -->
     <div class="section-card" id="card-sectors">
       <div class="section-header" onclick="toggleCard(this)">
-        <span class="section-title">📊 SECTOR PERFORMANCE &amp; CONSTITUENT STOCKS</span>
+        <span class="section-title">📊 SECTOR PERFORMANCE &amp; STOCKS</span>
         <span class="collapse-icon">▾</span>
       </div>
       <div class="section-body">
