@@ -36,6 +36,7 @@ import urllib.parse
 from datetime import datetime, timezone, timedelta
 import sys
 import os
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Ensure UTF-8 output so emojis and special chars render correctly in Windows Terminal
@@ -250,6 +251,9 @@ def fetch_sector_constituents(session: cffi_requests.Session, query_symbol: str)
             "company_name": company_name,
             "ltp":          float(item.get("lastPrice", 0) or 0),
             "pchange":      float(item.get("pChange", 0) or 0),
+            "open_price":   float(item.get("open", 0) or 0),
+            "day_high":     float(item.get("dayHigh", 0) or 0),
+            "day_low":      float(item.get("dayLow", 0) or 0),
         })
     return stocks
 
@@ -423,6 +427,9 @@ SQL_SCHEMA = [
         change_pct  REAL    NOT NULL,
         is_fno      INTEGER NOT NULL DEFAULT 0,
         lot_size    INTEGER,
+        open_price  REAL,
+        day_high    REAL,
+        day_low     REAL,
         timestamp   TEXT    NOT NULL
     );""",
     "CREATE INDEX IF NOT EXISTS idx_stocks_scan   ON stocks  (scan_id);",
@@ -465,7 +472,7 @@ SQL_SCHEMA = [
        WHERE s.scan_id = (SELECT MAX(scan_id) FROM scans)
        ORDER BY s.change_pct DESC;""",
     """CREATE VIEW IF NOT EXISTS v_latest_stocks AS
-       SELECT st.scan_id, sc.scan_date, sc.scan_time, st.sector_name, st.symbol, st.stock_name, st.ltp, st.change_pct, st.lot_size
+       SELECT st.scan_id, sc.scan_date, sc.scan_time, st.sector_name, st.symbol, st.stock_name, st.ltp, st.change_pct, st.lot_size, st.open_price, st.day_high, st.day_low
        FROM stocks st
        JOIN scans sc ON st.scan_id = sc.scan_id
        WHERE st.scan_id = (SELECT MAX(scan_id) FROM scans)
@@ -645,6 +652,13 @@ def init_db(db_path: str) -> sqlite3.Connection:
     except sqlite3.OperationalError:
         pass  # column already exists
 
+    # Migration: ensure open_price, day_high, day_low exist in stocks
+    for col in ("open_price", "day_high", "day_low"):
+        try:
+            cur.execute(f"ALTER TABLE stocks ADD COLUMN {col} REAL;")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
     # Drop views to recreate them with updated column definitions
     cur.execute("DROP VIEW IF EXISTS v_latest_stocks;")
     cur.execute("DROP VIEW IF EXISTS v_terminal_summary;")
@@ -692,12 +706,15 @@ def db_save_sector(conn: sqlite3.Connection, scan_id: int, sector_name: str, cha
 
 def db_save_stock(conn: sqlite3.Connection, scan_id: int, sector_name: str, symbol: str,
                   stock_name: str, ltp: float, change_pct: float, is_fno: bool, ts: str,
-                  lot_size: int = None):
+                  lot_size: int = None, open_price: float = None, day_high: float = None,
+                  day_low: float = None):
     conn.execute(
         """INSERT INTO stocks
-           (scan_id, sector_name, symbol, stock_name, ltp, change_pct, is_fno, lot_size, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);""",
-        (scan_id, sector_name, symbol, stock_name, ltp, change_pct, int(is_fno), lot_size, ts)
+           (scan_id, sector_name, symbol, stock_name, ltp, change_pct, is_fno, lot_size,
+            open_price, day_high, day_low, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+        (scan_id, sector_name, symbol, stock_name, ltp, change_pct, int(is_fno), lot_size,
+         open_price, day_high, day_low, ts)
     )
 
 
@@ -744,14 +761,30 @@ def fmt_pct(val: float) -> str:
 
 
 def print_sector_summary(rank: int, sector_name: str, sector_change: float, stocks: list, lot_sizes: dict = None):
-    """Print sector header and its top constituent stocks with contract lot size."""
+    """Print sector header and its top constituent stocks with contract lot size and Open condition."""
     print(f"{rank}. {sector_name:<20} {fmt_pct(sector_change)}")
     lot_map = lot_sizes or {}
     for stk in stocks:
         sym = stk['symbol']
         lot = lot_map.get(sym)
         lot_str = f"Lot: {lot}" if lot else ""
-        print(f"   {sym:<16} {fmt_pct(stk['pchange']):<10} {lot_str}")
+
+        op = stk.get('open_price') or 0
+        dh = stk.get('day_high') or 0
+        dl = stk.get('day_low') or 0
+        chg = stk.get('pchange') or 0
+
+        ohl_badge = ""
+        if op > 0 and dl > 0 and chg > 0 and dl <= op:
+            wick = (op - dl) / op * 100
+            if wick <= 0.15:
+                ohl_badge = f"[🔥 O=L {wick:.2f}%]"
+        elif op > 0 and dh > 0 and chg < 0 and dh >= op:
+            wick = (dh - op) / op * 100
+            if wick <= 0.15:
+                ohl_badge = f"[❄️ O=H {wick:.2f}%]"
+
+        print(f"   {sym:<14} {fmt_pct(chg):<9} {ohl_badge:<14} {lot_str}")
     print()
 
 
@@ -997,14 +1030,32 @@ def run_scanner(
     print(f"NIFTY 50 --> LTP: {nifty_ltp:,.2f}   Change: {_cpct(nifty_change)}   {dir_colour}{nifty_dir}{_RST}")
     # print(f"Lot Size: {nifty_lot}")
 
-    def _fmt_stock_row(sym: str, pchange: float, lot: int, col_w: int) -> str:
+    stock_lookup = {stk["symbol"]: stk for s_info in sectors_data.values() for stk in s_info.get("stocks", [])}
+
+    def _fmt_stock_row(sym: str, pchange: float, lot: int, col_w: int, stk: dict = None) -> str:
         lot_str  = f"Lot: {lot}" if lot else ""
         in_fut   = sym in active_fut_symbols
         fut_str  = "+"  if in_fut else " "
         is_top   = opt_liq_map.get(sym, 0) >= min_option_volume
         opt_str  = "[*]" if is_top else "[~]"
         pct_plain = fmt_pct(pchange)
-        row = f"   {sym:<11} {pct_plain:>7}  {lot_str:<9}  {fut_str}  {opt_str}"
+
+        ohl_str = "   "
+        target_stk = stk or stock_lookup.get(sym)
+        if target_stk:
+            op = target_stk.get("open_price") or 0
+            dh = target_stk.get("day_high") or 0
+            dl = target_stk.get("day_low") or 0
+            if op > 0 and dl > 0 and pchange > 0 and dl <= op:
+                wick = (op - dl) / op * 100
+                if wick <= 0.15:
+                    ohl_str = "O=L"
+            elif op > 0 and dh > 0 and pchange < 0 and dh >= op:
+                wick = (dh - op) / op * 100
+                if wick <= 0.15:
+                    ohl_str = "O=H"
+
+        row = f"   {sym:<10} {pct_plain:>7}  {ohl_str}  {lot_str:<9}  {fut_str}  {opt_str}"
         return f"{row:<{col_w}}"
 
     import re as _re
@@ -1023,6 +1074,9 @@ def run_scanner(
         # Colorize percentage values
         pl = _colorize_pct(pl)
         pr = _colorize_pct(pr)
+        # Colorize O=L / O=H indicators
+        pl = pl.replace("  O=L  ", f"  {_GRN}O=L{_RST}  ").replace("  O=H  ", f"  {_RED}O=H{_RST}  ")
+        pr = pr.replace("  O=L  ", f"  {_GRN}O=L{_RST}  ").replace("  O=H  ", f"  {_RED}O=H{_RST}  ")
         # Colorize Active Futures "+" indicator
         pl = pl.replace("  +  ", f"  {_CYN}+{_RST}  ")
         pr = pr.replace("  +  ", f"  {_CYN}+{_RST}  ")
@@ -1200,7 +1254,7 @@ def run_scanner(
             _print_dual_row(l_line, r_line)
 
     print(SEP_MID)
-    print(f"Legend: {_GRN}[*]{_RST} Top Active Option   {_YEL}[~]{_RST} Standard F&O Option   {_CYN}+{_RST} Active Futures")
+    print(f"Legend: {_GRN}[*]{_RST} Top Active Option   {_YEL}[~]{_RST} Standard F&O Option   {_CYN}+{_RST} Active Futures   {_GRN}O=L{_RST} Open≈Low   {_RED}O=H{_RST} Open≈High")
     print(SEP_LINE)
 
     # 9. DB writes happen AFTER display so terminal output is instant
@@ -1222,7 +1276,10 @@ def run_scanner(
                 change_pct=stk["pchange"],
                 is_fno=True,
                 ts=timestamp,
-                lot_size=lot_sizes.get(stk["symbol"])
+                lot_size=lot_sizes.get(stk["symbol"]),
+                open_price=stk.get("open_price"),
+                day_high=stk.get("day_high"),
+                day_low=stk.get("day_low"),
             )
             total_fno_stocks_saved += 1
 
@@ -1263,6 +1320,14 @@ def run_scanner(
     )
 
     conn.close()
+
+    # Automatically keep data/market_scanner.db in sync for GitHub Pages / web viewer
+    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+    if os.path.exists(data_dir):
+        try:
+            shutil.copy2(DB_FILE, os.path.join(data_dir, DB_FILE))
+        except Exception:
+            pass
 
     # print()
     print("DATABASE")

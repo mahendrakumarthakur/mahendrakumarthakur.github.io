@@ -747,6 +747,144 @@ body {
 .col-header.yellow { color: var(--yellow); }
 
 /* =====================================================================
+   Top Trading Candidates (Spotlight)
+   ===================================================================== */
+.spotlight-wrap {
+  padding: 12px 14px;
+}
+.spotlight-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+  transition: all var(--transition);
+}
+.spotlight-card.spotlight-long {
+  border-left: 4px solid var(--green);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--bg3) 100%);
+}
+.spotlight-card.spotlight-short {
+  border-left: 4px solid var(--red);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.06) 0%, var(--bg3) 100%);
+}
+
+.spotlight-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.spotlight-sym-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.spotlight-sym {
+  font-size: 1.15rem;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', var(--font-mono);
+  color: var(--text);
+  letter-spacing: .02em;
+}
+.spotlight-action-badge {
+  font-size: .68rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.spotlight-action-badge.pos {
+  background: var(--green-bg);
+  color: var(--green);
+  border: 1px solid var(--green);
+}
+.spotlight-action-badge.neg {
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red);
+}
+
+.spotlight-price-box {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: 'JetBrains Mono', var(--font-mono);
+}
+.spotlight-ltp {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.spotlight-pct {
+  font-size: .88rem;
+  font-weight: 700;
+}
+.spotlight-pct.pos { color: var(--green); }
+.spotlight-pct.neg { color: var(--red); }
+
+.spotlight-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  background: var(--bg2);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.spotlight-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metric-label {
+  font-size: .65rem;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-weight: 600;
+}
+.metric-val {
+  font-size: .80rem;
+  color: var(--text);
+  font-family: 'JetBrains Mono', var(--font-mono);
+}
+.metric-val strong {
+  color: var(--text);
+}
+
+.spotlight-summary-bar {
+  font-size: .74rem;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  line-height: 1.4;
+}
+.spotlight-summary-bar.pos-bar {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px dashed rgba(16, 185, 129, 0.3);
+}
+.spotlight-summary-bar.neg-bar {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px dashed rgba(239, 68, 68, 0.3);
+}
+.spotlight-empty {
+  padding: 16px 12px;
+  text-align: center;
+  color: var(--text3);
+  font-size: .78rem;
+  line-height: 1.5;
+  background: var(--bg3);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border);
+}
+
+/* =====================================================================
    Sector sub-panel
    ===================================================================== */
 .sector-panel {
@@ -850,6 +988,8 @@ body {
 .badge-fut  { background: var(--cyan-bg);   color: var(--cyan);   }
 .badge-opt  { background: var(--green-bg);  color: var(--green);  }
 .badge-fno  { background: var(--yellow-bg); color: var(--yellow); }
+.badge-ol   { background: rgba(16, 185, 129, 0.18); color: var(--green); border: 1px solid var(--green); box-shadow: 0 0 6px rgba(16, 185, 129, 0.25); font-weight: 800; }
+.badge-oh   { background: rgba(239, 68, 68, 0.18); color: var(--red); border: 1px solid var(--red); box-shadow: 0 0 6px rgba(239, 68, 68, 0.25); font-weight: 800; }
 
 /* =====================================================================
    Futures table
@@ -2498,20 +2638,53 @@ function pctText(val) {
   return `<span class="${cl}-text">${fmtPct(val)}</span>`;
 }
 
-function stockBadges(sym, activeFutSet, optLiqMap, minOptVol) {
+function checkOpenCondition(stk) {
+  if (!stk || !stk.open_price || stk.open_price <= 0) return { isOL: false, isOH: false, wickPct: 0 };
+
+  // Open ≈ Low check for Gainers / Long (Call)
+  // Low should be within 0.15% of Open (almost zero bottom wick)
+  if (stk.pchange > 0 && stk.day_low > 0 && stk.day_low <= stk.open_price) {
+    const wickPct = ((stk.open_price - stk.day_low) / stk.open_price) * 100;
+    if (wickPct <= 0.15) {
+      return { isOL: true, isOH: false, wickPct: parseFloat(wickPct.toFixed(2)) };
+    }
+  }
+
+  // Open ≈ High check for Losers / Short (Put)
+  // High should be within 0.15% of Open (almost zero upper wick)
+  if (stk.pchange < 0 && stk.day_high > 0 && stk.day_high >= stk.open_price) {
+    const wickPct = ((stk.day_high - stk.open_price) / stk.open_price) * 100;
+    if (wickPct <= 0.15) {
+      return { isOL: false, isOH: true, wickPct: parseFloat(wickPct.toFixed(2)) };
+    }
+  }
+
+  return { isOL: false, isOH: false, wickPct: 0 };
+}
+
+function stockBadges(stk, activeFutSet, optLiqMap, minOptVol) {
+  const sym = stk.symbol;
   const hasFut = activeFutSet.has(sym);
   const optVol  = optLiqMap[sym] || 0;
   const isTopOpt = optVol >= minOptVol;
   const isFnoOpt = optVol > 0 && !isTopOpt;
   let html = '';
-  if (hasFut)   html += `<span class="badge badge-fut" title="Active Futures">+FUT</span>`;
-  if (isTopOpt) html += `<span class="badge badge-opt" title="Top Active Option (vol ${fmtVol(optVol)})">[*]</span>`;
-  else if (isFnoOpt) html += `<span class="badge badge-fno" title="F&O Option (vol ${fmtVol(optVol)})">[~]</span>`;
+
+  const cond = checkOpenCondition(stk);
+  if (cond.isOL) {
+    html += `<span class="badge badge-ol" title="Open ≈ Low: Open ₹${fmtNum(stk.open_price)}, Low ₹${fmtNum(stk.day_low)} (wick ${cond.wickPct}%)">🔥 O=L</span> `;
+  } else if (cond.isOH) {
+    html += `<span class="badge badge-oh" title="Open ≈ High: Open ₹${fmtNum(stk.open_price)}, High ₹${fmtNum(stk.day_high)} (wick ${cond.wickPct}%)">❄️ O=H</span> `;
+  }
+
+  if (hasFut)   html += `<span class="badge badge-fut" title="Active Futures">+FUT</span> `;
+  if (isTopOpt) html += `<span class="badge badge-opt" title="Top Active Option (vol ${fmtVol(optVol)})">[*]</span> `;
+  else if (isFnoOpt) html += `<span class="badge badge-fno" title="F&O Option (vol ${fmtVol(optVol)})">[~]</span> `;
   return html;
 }
 
 function buildStockRow(stk, activeFutSet, optLiqMap, minOptVol) {
-  const badges = stockBadges(stk.symbol, activeFutSet, optLiqMap, minOptVol);
+  const badges = stockBadges(stk, activeFutSet, optLiqMap, minOptVol);
   const lotStr  = stk.lot_size ? `Lot: ${stk.lot_size}` : '';
   return `
     <div class="stock-row" data-symbol="${stk.symbol}">
@@ -2595,6 +2768,239 @@ function stockTier(sym, activeFutSet, optLiqMap, minOptVol) {
 }
 
 /* ────────────────────────────────────────────
+   1-Trade Focus: Spotlight Selection & Card
+   ──────────────────────────────────────────── */
+function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfg, isLong) {
+  if (!candidateSectors || !candidateSectors.length) return null;
+
+  let bestCand = null;
+  let bestScore = -999999;
+
+  // Pass 1: Strict search meeting ALL active filters (Lot size, Max %, Direction, AND Min Option Volume of matching type)
+  for (let sIdx = 0; sIdx < candidateSectors.length; sIdx++) {
+    const sec = candidateSectors[sIdx];
+    const stocks = sectorStocksMap[sec.name] || [];
+
+    for (const stk of stocks) {
+      // 1. Lot size filter
+      if (cfg.maxLot && stk.lot_size && stk.lot_size > cfg.maxLot) continue;
+
+      // 2. Max % Move filter
+      if (cfg.maxPct && Math.abs(stk.pchange) > cfg.maxPct) continue;
+
+      // 3. Direction filter
+      if (isLong && stk.pchange <= 0) continue;
+      if (!isLong && stk.pchange >= 0) continue;
+
+      // 4. Directional Option Volume (Must be Call vol for Long, Put vol for Short!)
+      const optVol = isLong ? ((callMap[stk.symbol]?.volume) || 0) : ((putMap[stk.symbol]?.volume) || 0);
+      if (cfg.minOptVol && optVol < cfg.minOptVol) continue;
+
+      // 5. Directional Tier
+      const hasFut = activeFutSet.has(stk.symbol);
+      const hasOpt = optVol >= cfg.minOptVol;
+      let tier = 0;
+      if (hasFut && hasOpt) tier = 3;
+      else if (hasFut) tier = 2;
+      else if (hasOpt) tier = 1;
+
+      // Scoring formula:
+      // Sector rank weight: Sector 1 (+100), Sector 2 (+70), Sector 3 (+50), etc.
+      const secWeight = Math.max(10, 100 - (sIdx * 30));
+      // Tier 3 (Fut + Opt) gets +200 bonus, Tier 1 (Opt) gets +120 bonus
+      const tierWeight = tier === 3 ? 200 : (tier === 1 ? 120 : (tier === 2 ? 100 : 0));
+      // Momentum weight
+      const moveWeight = Math.abs(stk.pchange) * 15;
+
+      // 6. Open Condition Bonus (Open ≈ Low or Open ≈ High)
+      const cond = checkOpenCondition(stk);
+      const olBonus = (isLong && cond.isOL) ? 80 : ((!isLong && cond.isOH) ? 80 : 0);
+
+      const score = secWeight + tierWeight + moveWeight + olBonus;
+
+      if (score > bestScore) {
+        bestScore = score;
+        const optDetail = isLong ? (callMap[stk.symbol] || {}) : (putMap[stk.symbol] || {});
+        bestCand = {
+          symbol: stk.symbol,
+          ltp: stk.ltp,
+          pchange: stk.pchange,
+          lot_size: stk.lot_size,
+          open_price: stk.open_price,
+          day_high: stk.day_high,
+          day_low: stk.day_low,
+          openCond: cond,
+          sectorName: sec.name,
+          sectorChange: sec.change,
+          sectorRank: sIdx + 1,
+          tier,
+          hasFut,
+          hasOpt,
+          optVol,
+          optContracts: optDetail.contracts_count || 1,
+          isLong,
+          isFallback: false
+        };
+      }
+    }
+  }
+
+  // Pass 2: Fallback if strict directional option volume yielded no candidate across sectors
+  // (e.g. on one-sided market days where no liquid puts exist; prioritizes +FUT and sector breakdown)
+  if (!bestCand) {
+    for (let sIdx = 0; sIdx < Math.min(candidateSectors.length, 3); sIdx++) {
+      const sec = candidateSectors[sIdx];
+      const stocks = sectorStocksMap[sec.name] || [];
+
+      for (const stk of stocks) {
+        if (cfg.maxLot && stk.lot_size && stk.lot_size > cfg.maxLot) continue;
+        if (cfg.maxPct && Math.abs(stk.pchange) > cfg.maxPct) continue;
+        if (isLong && stk.pchange <= 0) continue;
+        if (!isLong && stk.pchange >= 0) continue;
+
+        const optVol = isLong ? ((callMap[stk.symbol]?.volume) || 0) : ((putMap[stk.symbol]?.volume) || 0);
+        const hasFut = activeFutSet.has(stk.symbol);
+        const hasOpt = optVol >= cfg.minOptVol;
+        let tier = 0;
+        if (hasFut && hasOpt) tier = 3;
+        else if (hasFut) tier = 2;
+        else if (hasOpt) tier = 1;
+
+        const cond = checkOpenCondition(stk);
+        const olBonus = (isLong && cond.isOL) ? 80 : ((!isLong && cond.isOH) ? 80 : 0);
+
+        const secWeight = Math.max(10, 80 - (sIdx * 25));
+        // Active Futures (+FUT) receives strong weight (+140) to lead over zero-derivative stocks
+        const tierWeight = tier === 3 ? 180 : (tier === 2 ? 140 : (optVol > 0 ? 60 : 0));
+        const moveWeight = Math.abs(stk.pchange) * 15;
+        const score = secWeight + tierWeight + moveWeight + olBonus;
+
+        if (score > bestScore) {
+          bestScore = score;
+          const optDetail = isLong ? (callMap[stk.symbol] || {}) : (putMap[stk.symbol] || {});
+          bestCand = {
+            symbol: stk.symbol,
+            ltp: stk.ltp,
+            pchange: stk.pchange,
+            lot_size: stk.lot_size,
+            open_price: stk.open_price,
+            day_high: stk.day_high,
+            day_low: stk.day_low,
+            openCond: cond,
+            sectorName: sec.name,
+            sectorChange: sec.change,
+            sectorRank: sIdx + 1,
+            tier,
+            hasFut,
+            hasOpt,
+            optVol,
+            optContracts: optDetail.contracts_count || 1,
+            isLong,
+            isFallback: true
+          };
+        }
+      }
+    }
+  }
+
+  return bestCand;
+}
+
+function buildSpotlightCard(cand, isLong, cfg) {
+  if (!cand) {
+    const dirTxt = isLong ? 'Long (Call)' : 'Short (Put)';
+    return `
+      <div class="spotlight-empty">
+        ⚠️ No qualifying <strong>${dirTxt}</strong> candidate matches all active filters.<br>
+        <span style="font-size:.70rem;color:var(--text3);margin-top:4px;display:inline-block;">
+          (Max Lot: ${cfg.maxLot || 'All'} | Min Vol: ${fmtVol(cfg.minOptVol)} | Max Move: ${cfg.maxPct ? cfg.maxPct + '%' : 'Off'})
+        </span>
+      </div>`;
+  }
+
+  const callOrPut = isLong ? 'CALL' : 'PUT';
+  const actionText = isLong ? 'BUY CALL' : 'BUY PUT';
+  const secName = cand.sectorName ? cand.sectorName.replace('NIFTY ', '') : '—';
+  
+  let badgesHtml = '';
+  if (cand.hasFut) badgesHtml += '<span class="badge badge-fut">+FUT</span> ';
+  if (cand.hasOpt) {
+    badgesHtml += `<span class="badge badge-opt">[*] ${callOrPut}</span>`;
+  } else if (cand.optVol > 0) {
+    badgesHtml += `<span class="badge badge-fno">[~] ${callOrPut} (Low Vol)</span>`;
+  } else if (cand.hasFut) {
+    badgesHtml += `<span class="badge badge-fno">Futures Only</span>`;
+  } else {
+    badgesHtml += `<span class="badge badge-fno">No Options</span>`;
+  }
+
+  const cond = cand.openCond || checkOpenCondition(cand);
+  let olBadge = '';
+  if (cond.isOL) {
+    olBadge = `<span class="spotlight-action-badge pos" style="box-shadow:0 0 8px rgba(16,185,129,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | Low: ₹${fmtNum(cand.day_low)}">🔥 OPEN = LOW (${cond.wickPct}%)</span>`;
+  } else if (cond.isOH) {
+    olBadge = `<span class="spotlight-action-badge neg" style="box-shadow:0 0 8px rgba(239,68,68,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | High: ₹${fmtNum(cand.day_high)}">❄️ OPEN = HIGH (${cond.wickPct}%)</span>`;
+  }
+
+  let launchNote = '';
+  if (cond.isOL) launchNote = `🔥 Clean Open = Low institutional launch (${cond.wickPct}% bottom wick). `;
+  else if (cond.isOH) launchNote = `❄️ Clean Open = High institutional dump (${cond.wickPct}% upper wick). `;
+
+  return `
+    <div class="spotlight-card ${isLong ? 'spotlight-long' : 'spotlight-short'}">
+      <div class="spotlight-header">
+        <div class="spotlight-sym-box">
+          <span class="spotlight-sym">${cand.symbol}</span>
+          <span class="spotlight-action-badge ${isLong ? 'pos' : 'neg'}">
+            ⚡ ${actionText}
+          </span>
+          ${olBadge}
+        </div>
+        <div class="spotlight-price-box">
+          <span class="spotlight-ltp">₹${fmtNum(cand.ltp)}</span>
+          <span class="spotlight-pct ${cand.pchange >= 0 ? 'pos' : 'neg'}">${fmtPct(cand.pchange)}</span>
+        </div>
+      </div>
+
+      <div class="spotlight-details">
+        <div class="spotlight-metric">
+          <span class="metric-label">Sector Tailwind</span>
+          <span class="metric-val">${secName} <strong>${fmtPct(cand.sectorChange)}</strong></span>
+        </div>
+        <div class="spotlight-metric">
+          <span class="metric-label">Lot Size</span>
+          <span class="metric-val">${cand.lot_size ? cand.lot_size : '—'}</span>
+        </div>
+        <div class="spotlight-metric">
+          <span class="metric-label">Candle Structure</span>
+          <span class="metric-val">
+            ${cond.isOL ? '<strong style="color:var(--green)">🔥 O=L (' + cond.wickPct + '%)</strong>' : (cond.isOH ? '<strong style="color:var(--red)">❄️ O=H (' + cond.wickPct + '%)</strong>' : (cand.open_price ? 'Open: ₹' + fmtNum(cand.open_price) : '—'))}
+          </span>
+        </div>
+        <div class="spotlight-metric">
+          <span class="metric-label">Option Volume</span>
+          <span class="metric-val">${cand.optVol ? fmtVol(cand.optVol) : (cand.isFallback ? '<span style="color:var(--text3)">Below Min</span>' : '—')}</span>
+        </div>
+        <div class="spotlight-metric">
+          <span class="metric-label">F&amp;O Confluence</span>
+          <span class="metric-val">${badgesHtml}</span>
+        </div>
+      </div>
+
+      <div class="spotlight-summary-bar ${isLong ? 'pos-bar' : 'neg-bar'}">
+        🎯 <strong>1-Trade Focus:</strong> Top pick in <strong>${secName}</strong> (Rank #${cand.sectorRank}). 
+        ${launchNote}${cand.hasFut && cand.hasOpt 
+          ? 'Maximum confluence: Active in both Futures and liquid Options.' 
+          : cand.hasOpt 
+            ? 'Strong option liquidity with sector tailwind.' 
+            : cand.hasFut 
+              ? 'Institutional Futures momentum (Breakdown with active +FUT).' 
+              : 'Leading sector momentum.'}
+      </div>
+    </div>`;
+}
+
+/* ────────────────────────────────────────────
    Main render
    ──────────────────────────────────────────── */
 function rerender() {
@@ -2640,18 +3046,36 @@ function rerender() {
   const filteredLosers = topLosers.filter(s => !gainerNames.has(s.name));
 
   /* ── 3. Stocks (grouped by sector) ── */
-  const stockRows = db.exec(`
-    SELECT sector_name, symbol, ltp, change_pct, lot_size
-    FROM stocks WHERE scan_id = ?
-  `, [scanId]);
+  let stockRows = [];
+  try {
+    const colInfo = db.exec("PRAGMA table_info(stocks);");
+    const colNames = (colInfo[0]?.values || []).map(c => c[1]);
+    const hasOHL = colNames.includes('open_price') && colNames.includes('day_high') && colNames.includes('day_low');
+
+    const stockQuery = hasOHL
+      ? `SELECT sector_name, symbol, ltp, change_pct, lot_size, open_price, day_high, day_low FROM stocks WHERE scan_id = ?`
+      : `SELECT sector_name, symbol, ltp, change_pct, lot_size, 0, 0, 0 FROM stocks WHERE scan_id = ?`;
+
+    stockRows = db.exec(stockQuery, [scanId]);
+  } catch(e) {
+    stockRows = db.exec(`SELECT sector_name, symbol, ltp, change_pct, lot_size, 0, 0, 0 FROM stocks WHERE scan_id = ?`, [scanId]);
+  }
 
   const sectorStocksMap = {};
   const lotSizes = {};
-  (stockRows[0]?.values || []).forEach(([sec, sym, ltp, chg, lot]) => {
+  (stockRows[0]?.values || []).forEach(([sec, sym, ltp, chg, lot, openP, dHigh, dLow]) => {
     const s = sym.trim().toUpperCase();
     if (lot) lotSizes[s] = parseInt(lot);
     if (!sectorStocksMap[sec]) sectorStocksMap[sec] = [];
-    sectorStocksMap[sec].push({ symbol: s, ltp: parseFloat(ltp)||0, pchange: parseFloat(chg)||0, lot_size: lot ? parseInt(lot) : null });
+    sectorStocksMap[sec].push({
+      symbol: s,
+      ltp: parseFloat(ltp) || 0,
+      pchange: parseFloat(chg) || 0,
+      lot_size: lot ? parseInt(lot) : null,
+      open_price: parseFloat(openP) || 0,
+      day_high: parseFloat(dHigh) || 0,
+      day_low: parseFloat(dLow) || 0
+    });
   });
 
   /* ── 4. Active Futures ── */
@@ -2729,6 +3153,18 @@ function rerender() {
   const leftOptions    = isPos ? topCalls      : topPuts;
   const rightOptions   = isPos ? topPuts       : topCalls;
 
+  /* ── 6b. 1-Trade Spotlight Candidates ── */
+  const gainingSecs = allSectors.filter(s => s.change > 0).length ? allSectors.filter(s => s.change > 0) : topGainers;
+  const losingSecs  = allSectors.filter(s => s.change < 0).length ? [...allSectors.filter(s => s.change < 0)].reverse() : filteredLosers;
+
+  const topLongCand  = findSpotlightCandidate(gainingSecs, sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, true);
+  const topShortCand = findSpotlightCandidate(losingSecs,  sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, false);
+
+  const leftSpotlightTitle  = isPos ? '▲ 1-TRADE FOCUS: TOP LONG CANDIDATE' : '▼ 1-TRADE FOCUS: TOP SHORT CANDIDATE';
+  const rightSpotlightTitle = isPos ? '▼ 1-TRADE FOCUS: TOP SHORT CANDIDATE' : '▲ 1-TRADE FOCUS: TOP LONG CANDIDATE';
+  const leftSpotlightHtml   = isPos ? buildSpotlightCard(topLongCand, true, cfgObj) : buildSpotlightCard(topShortCand, false, cfgObj);
+  const rightSpotlightHtml  = isPos ? buildSpotlightCard(topShortCand, false, cfgObj) : buildSpotlightCard(topLongCand, true, cfgObj);
+
   const leftSecTitle  = isPos ? `▲ TOP GAINING SECTORS`  : `▼ TOP LOSING SECTORS`;
   const rightSecTitle = isPos ? `▼ TOP LOSING SECTORS`   : `▲ TOP GAINING SECTORS`;
   const leftFutTitle  = isPos ? `▲ ACTIVE FUTURES — GAINERS` : `▼ ACTIVE FUTURES — LOSERS`;
@@ -2758,6 +3194,24 @@ function rerender() {
   /* ── 11. Assemble HTML ── */
   const grid = document.getElementById('content-grid');
   grid.innerHTML = `
+
+    <!-- 1-TRADE SPOTLIGHT CARD -->
+    <div class="section-card" id="card-spotlight">
+      <div class="section-header" onclick="toggleCard(this)">
+        <span class="section-title yellow">🎯 1-TRADE SPOTLIGHT — HIGH CONVICTION CANDIDATE</span>
+        <span class="collapse-icon">▾</span>
+      </div>
+      <div class="section-body">
+        <div class="col">
+          <div class="col-header ${isPos ? 'pos' : 'neg'}">${leftSpotlightTitle}</div>
+          <div class="spotlight-wrap">${leftSpotlightHtml}</div>
+        </div>
+        <div class="col">
+          <div class="col-header ${isPos ? 'neg' : 'pos'}">${rightSpotlightTitle}</div>
+          <div class="spotlight-wrap">${rightSpotlightHtml}</div>
+        </div>
+      </div>
+    </div>
 
     <!-- SECTOR CARD -->
     <div class="section-card" id="card-sectors">
