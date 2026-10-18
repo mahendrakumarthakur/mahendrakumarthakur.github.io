@@ -1647,38 +1647,39 @@ kbd {
     <h2>📊 NSE Sector F&amp;O — Scan History Viewer</h2>
     <p>Reads <strong>market_scanner.db</strong> entirely in your browser — no server, no upload.</p>
 
-    <!-- Web / GitHub Pages auto-load action -->
-    <div style="margin-bottom:12px;">
-      <button class="btn btn-secondary" onclick="autoFetchDbFromDataFolder(true)" style="width:100%;padding:11px;font-size:.88rem;border-radius:var(--radius);">
-        🌐 Fetch latest from data/market_scanner.db
+    <!-- Web / GitHub Pages auto-load action (only shown when hosted on GitHub) -->
+    <div id="loader-cloud-actions" style="display:none;margin-bottom:12px;">
+      <button class="btn btn-primary" onclick="autoFetchDbFromDataFolder(true)" style="width:100%;padding:14px;font-size:1rem;border-radius:var(--radius);">
+        🌐 Fetch latest from GitHub
       </button>
     </div>
 
-    <!-- Primary action: File System Access API (Chrome/Edge) or fallback -->
-    <button class="btn btn-primary" id="btn-open-fs" onclick="openWithFSAPI()" style="width:100%;padding:14px;font-size:1rem;border-radius:var(--radius);margin-bottom:12px;">
-      🗄️ Open local market_scanner.db
-    </button>
-
-    <div id="last-file-row" style="display:none;margin-bottom:12px;">
-      <button class="btn btn-secondary" id="btn-reopen" onclick="reopenLastFile()" style="width:100%;padding:10px;font-size:.88rem;border-radius:var(--radius);">
-        ⚡ Re-open last file: <span id="last-file-name"></span>
+    <!-- Primary action for Local PC: File System Access API (Chrome/Edge) or fallback -->
+    <div id="loader-local-actions" style="margin-bottom:12px;">
+      <button class="btn btn-primary" id="btn-open-fs" onclick="openWithFSAPI()" style="width:100%;padding:14px;font-size:1rem;border-radius:var(--radius);margin-bottom:12px;">
+        🗄️ Open local market_scanner.db
       </button>
-    </div>
 
-    <div class="divider-or"><span>or drag &amp; drop</span></div>
+      <div id="last-file-row" style="display:none;margin-bottom:12px;">
+        <button class="btn btn-secondary" id="btn-reopen" onclick="reopenLastFile()" style="width:100%;padding:10px;font-size:.88rem;border-radius:var(--radius);">
+          ⚡ Re-open last local file: <span id="last-file-name"></span>
+        </button>
+      </div>
 
-    <div class="drop-zone" id="drop-zone">
-      <div>Drop <strong>market_scanner.db</strong> anywhere here</div>
-      <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3" style="display:none"/>
+      <div class="divider-or"><span>or drag &amp; drop</span></div>
+
+      <div class="drop-zone" id="drop-zone">
+        <div>Drop <strong>market_scanner.db</strong> anywhere here</div>
+        <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3" style="display:none"/>
+      </div>
     </div>
 
     <div id="browser-note" style="margin-top:14px;padding:12px 14px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border);text-align:left;">
       <div style="font-size:.74rem;color:var(--text2);line-height:1.7;">
-        <strong style="color:var(--accent);">🚀 GitHub Pages (mahendrakukmarthkaur.github.io):</strong><br>
-        When hosted on your domain, this page <strong>auto-loads <code>data/market_scanner.db</code></strong> directly over HTTPS without needing any upload!<br>
-        <strong style="color:var(--text);">Publishing your latest scans:</strong><br>
-        Save your DB into <code>data/market_scanner.db</code>, then run:<br>
-        <code style="background:var(--bg2);color:var(--accent);padding:2px 6px;border-radius:3px;">git add data/market_scanner.db &amp;&amp; git commit -m "update data" &amp;&amp; git push</code>
+        <strong style="color:var(--accent);">💻 Local PC Mode:</strong><br>
+        Directly connected to your local hard drive. Morning scans from <code>nse_sector_scanner.py</code> reflect here immediately.<br>
+        <strong style="color:var(--text);">Publishing to GitHub Pages (optional):</strong><br>
+        Run: <code style="background:var(--bg2);color:var(--accent);padding:2px 6px;border-radius:3px;">git add data/market_scanner.db &amp;&amp; git commit -m "update data" &amp;&amp; git push</code>
       </div>
     </div>
 
@@ -1911,6 +1912,7 @@ const FSAPI_SUPPORTED = ('showOpenFilePicker' in window);
 const IDB_NAME  = 'nse_scanner';
 const IDB_STORE = 'handles';
 const IDB_KEY   = 'lastDbHandle';
+let activeFileHandle = null;
 
 /* Open IndexedDB */
 function openIDB() {
@@ -1923,6 +1925,7 @@ function openIDB() {
 }
 
 async function saveHandle(handle) {
+  activeFileHandle = handle;
   try {
     const idb = await openIDB();
     const tx  = idb.transaction(IDB_STORE, 'readwrite');
@@ -1942,6 +1945,7 @@ async function loadSavedHandle() {
 }
 
 async function clearHandle() {
+  activeFileHandle = null;
   try {
     const idb = await openIDB();
     idb.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE).delete(IDB_KEY);
@@ -1956,6 +1960,7 @@ async function openWithFSAPI() {
         types: [{ description: 'SQLite Database', accept: { 'application/x-sqlite3': ['.db', '.sqlite', '.sqlite3'] } }],
         multiple: false
       });
+      activeFileHandle = handle;
       const file = await handle.getFile();
       await saveHandle(handle);
       await loadFile(file, file.name);
@@ -1972,6 +1977,7 @@ async function openWithFSAPI() {
 async function reopenLastFile() {
   const handle = await loadSavedHandle();
   if (!handle) return;
+  activeFileHandle = handle;
   try {
     /* Request permission — required after page reload */
     const perm = await handle.queryPermission({ mode: 'read' });
@@ -1993,6 +1999,7 @@ async function checkLastFile() {
   if (!FSAPI_SUPPORTED) return;
   const handle = await loadSavedHandle();
   if (!handle) return;
+  activeFileHandle = handle;
   try {
     const perm = await handle.queryPermission({ mode: 'read' });
     document.getElementById('last-file-name').textContent = handle.name;
@@ -2007,14 +2014,35 @@ async function checkLastFile() {
 }
 
 /* Startup:
-   1. If served via http/https (e.g. mahendrakukmarthkaur.github.io or localhost), auto-load data/market_scanner.db!
-   2. Otherwise (file:///), check last saved handle.
+   1. If hosted on GitHub Pages (github.io), auto-fetch data/market_scanner.db from repo!
+   2. If local HTTP server (localhost / 127.0.0.1), try local folder fetch.
+   3. Otherwise (file:/// or local disk), check last saved handle.
 */
 (async function initApp() {
-  if (location.protocol.startsWith('http')) {
+  const isGitHub = location.hostname.includes('github.io');
+  
+  if (isGitHub) {
+    const cloudBox = document.getElementById('loader-cloud-actions');
+    const localBox = document.getElementById('loader-local-actions');
+    const noteBox  = document.getElementById('browser-note');
+    if (cloudBox) cloudBox.style.display = 'block';
+    if (localBox) localBox.style.display = 'none';
+    if (noteBox)  noteBox.style.display  = 'none';
+
     const ok = await autoFetchDbFromDataFolder(false);
     if (ok) return;
+  } else {
+    const cloudBox = document.getElementById('loader-cloud-actions');
+    const localBox = document.getElementById('loader-local-actions');
+    if (cloudBox) cloudBox.style.display = 'none';
+    if (localBox) localBox.style.display = 'block';
+
+    if (location.protocol.startsWith('http')) {
+      const ok = await autoFetchDbFromDataFolder(false);
+      if (ok) return;
+    }
   }
+
   await checkLastFile();
 })();
 
@@ -2123,22 +2151,79 @@ async function refreshLatestData() {
   const btn = document.getElementById('btn-refresh-data');
   const origHtml = btn ? btn.innerHTML : '🔄 Refresh';
   if (btn) btn.innerHTML = '<span class="spinner"></span> Syncing…';
-  const ok = await autoFetchDbFromDataFolder(true);
-  if (btn) btn.innerHTML = origHtml;
-  if (ok) {
-    showToast('⚡', 'Updated!', 'Loaded latest scan database from GitHub', '');
-  } else {
-    showToast('⚠️', 'Refresh failed', 'Could not fetch latest scans', '');
+
+  try {
+    const isGitHub = location.hostname.includes('github.io');
+
+    // 1. GITHUB CLOUD MODE: fetch latest scans from GitHub repository
+    if (isGitHub) {
+      const ok = await autoFetchDbFromDataFolder(true);
+      if (btn) btn.innerHTML = origHtml;
+      if (ok) {
+        showToast('⚡', 'GitHub Synced!', 'Loaded latest scan database from GitHub', '');
+      } else {
+        showToast('⚠️', 'Refresh failed', 'Could not fetch latest scans from GitHub', '');
+      }
+      return;
+    }
+
+    // 2. LOCAL PC MODE (file:/// or local disk handle):
+    // Re-read the file directly from disk using File System Access API
+    let handle = activeFileHandle || await loadSavedHandle();
+    if (handle) {
+      activeFileHandle = handle;
+      let perm = await handle.queryPermission({ mode: 'read' });
+      if (perm !== 'granted') {
+        perm = await handle.requestPermission({ mode: 'read' });
+        if (perm !== 'granted') throw new Error('Permission denied to read ' + handle.name);
+      }
+      const file = await handle.getFile();
+      await loadFile(file, file.name);
+      if (btn) btn.innerHTML = origHtml;
+      showToast('⚡', 'Local DB Refreshed!', `Re-read ${file.name} directly from disk (${(file.size / 1024 / 1024).toFixed(2)} MB)`, '');
+      return;
+    }
+
+    // 3. LOCAL WEBSERVER MODE (localhost / 127.0.0.1):
+    if (location.protocol.startsWith('http')) {
+      const ts = Date.now();
+      const localPaths = [`data/market_scanner.db?_t=${ts}`, `market_scanner.db?_t=${ts}`];
+      for (const p of localPaths) {
+        try {
+          const resp = await fetch(p, { cache: 'no-store' });
+          if (resp.ok) {
+            const buf = await resp.arrayBuffer();
+            await loadBuffer(buf, p.split('?')[0]);
+            if (btn) btn.innerHTML = origHtml;
+            showToast('⚡', 'Local Webserver Refreshed!', `Loaded ${p.split('?')[0]} from local server`, '');
+            return;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 4. Fallback if no handle on file:///
+    if (btn) btn.innerHTML = origHtml;
+    await openWithFSAPI();
+  } catch (err) {
+    if (btn) btn.innerHTML = origHtml;
+    showToast('⚠️', 'Refresh error', err.message, '');
   }
 }
 
 /* Web / GitHub Pages auto-fetch: loads data/market_scanner.db */
 async function autoFetchDbFromDataFolder(isManual = false) {
   const isGitHub = location.hostname.includes('github.io');
+  
+  // STRICT ISOLATION: NEVER fetch from GitHub if running locally!
+  // Local PC must always reference local database.
+  if (!isGitHub && !location.protocol.startsWith('http')) {
+    return false;
+  }
+
   let candidates = [];
 
-  // Query GitHub API for the newest commit SHA.
-  // Using the commit SHA in the URL path completely bypasses both the 5-min CDN cache and the 3-min Pages build queue!
+  // When hosted on GitHub Pages:
   if (isGitHub) {
     try {
       if (isManual) setStatus('info', '<span class="spinner"></span> Checking GitHub for latest commit…');
@@ -2153,14 +2238,21 @@ async function autoFetchDbFromDataFolder(isManual = false) {
         }
       }
     } catch (_) {}
-  }
 
-  const ts = Date.now();
-  candidates.push(
-    `data/market_scanner.db?_t=${ts}`,
-    `https://raw.githubusercontent.com/mahendrakumarthakur/mahendrakumarthakur.github.io/main/data/market_scanner.db?_t=${ts}`,
-    `market_scanner.db?_t=${ts}`
-  );
+    const ts = Date.now();
+    candidates.push(
+      `data/market_scanner.db?_t=${ts}`,
+      `https://raw.githubusercontent.com/mahendrakumarthakur/mahendrakumarthakur.github.io/main/data/market_scanner.db?_t=${ts}`,
+      `market_scanner.db?_t=${ts}`
+    );
+  } else {
+    // Local web server (localhost / 127.0.0.1) - strictly local only, no external GitHub requests
+    const ts = Date.now();
+    candidates.push(
+      `data/market_scanner.db?_t=${ts}`,
+      `market_scanner.db?_t=${ts}`
+    );
+  }
 
   for (const path of candidates) {
     try {
@@ -2169,12 +2261,13 @@ async function autoFetchDbFromDataFolder(isManual = false) {
       const resp = await fetch(path, { cache: 'no-store' });
       if (!resp.ok) continue;
       const buf = await resp.arrayBuffer();
-      await loadBuffer(buf, 'data/market_scanner.db');
+      const displayLabel = isGitHub ? 'GitHub: data/market_scanner.db' : `local: ${path.split('?')[0]}`;
+      await loadBuffer(buf, displayLabel);
       return true;
     } catch (_) {}
   }
   if (isManual) {
-    setStatus('error', '✖ Could not fetch data/market_scanner.db. If running locally via file://, use Open button.');
+    setStatus('error', isGitHub ? '✖ Could not fetch data/market_scanner.db from GitHub.' : '✖ Could not fetch local database. Use Open button.');
   }
   return false;
 }
@@ -2361,11 +2454,20 @@ function updateDbIndicator(name) {
   const el = document.getElementById('db-indicator');
   el.className = 'status-badge ok';
   el.classList.remove('hidden');
-  document.getElementById('db-indicator-text').textContent = name;
+  const isGitHub = location.hostname.includes('github.io');
+  const badgePrefix = isGitHub ? '🌐 Cloud' : '💻 Local';
+  document.getElementById('db-indicator-text').textContent = `${badgePrefix}: ${name}`;
 }
 
 function showViewer() {
   loadSavedConfigs();
+  const isGitHub = location.hostname.includes('github.io');
+  const refBtn = document.getElementById('btn-refresh-data');
+  if (refBtn) {
+    refBtn.title = isGitHub 
+      ? 'Fetch latest scans from GitHub repository' 
+      : 'Re-read latest scans directly from local disk (market_scanner.db)';
+  }
   document.getElementById('db-loader').style.display = 'none';
   document.getElementById('viewer').style.display = 'block';
 }
