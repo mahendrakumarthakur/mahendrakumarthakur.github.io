@@ -2872,13 +2872,12 @@ function stockTier(sym, activeFutSet, optLiqMap, minOptVol) {
 /* ────────────────────────────────────────────
    1-Trade Focus: Spotlight Selection & Card
    ──────────────────────────────────────────── */
-function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfg, isLong) {
+function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfg, isLong, activeFutMap, stockSectorsMap) {
   if (!candidateSectors || !candidateSectors.length) return null;
 
   let bestCand = null;
   let bestScore = -999999;
 
-  // Pass 1: Strict search meeting ALL active filters (Lot size, Max %, Direction, AND Min Option Volume of matching type)
   for (let sIdx = 0; sIdx < candidateSectors.length; sIdx++) {
     const sec = candidateSectors[sIdx];
     const stocks = sectorStocksMap[sec.name] || [];
@@ -2890,15 +2889,59 @@ function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet,
       // 2. Max % Move filter
       if (cfg.maxPct && Math.abs(stk.pchange) > cfg.maxPct) continue;
 
-      // 3. Direction filter
+      // 3. Direction filter (Stock change % must match trade direction)
       if (isLong && stk.pchange <= 0) continue;
       if (!isLong && stk.pchange >= 0) continue;
 
-      // 4. Directional Option Volume (Must be Call vol for Long, Put vol for Short!)
-      const optVol = isLong ? ((callMap[stk.symbol]?.volume) || 0) : ((putMap[stk.symbol]?.volume) || 0);
-      if (cfg.minOptVol && optVol < cfg.minOptVol) continue;
+      // 4. Cross-Sector Confluence (SOFT — score penalty, not hard reject):
+      // A stock like SBIN belongs to PSU BANK (+0.69%) but also NIFTY BANK (-0.03%).
+      // The PRIMARY sector (where we found this stock = current candidateSector) is what matters.
+      // Secondary sectors going slightly opposite = penalty, not disqualification.
+      let crossSectorPenalty = 0;
+      if (stockSectorsMap && stockSectorsMap[stk.symbol]) {
+        const secList = stockSectorsMap[stk.symbol];
+        const opposingSecs = isLong
+          ? secList.filter(s => s.name !== sec.name && s.change < -0.1)  // only meaningfully negative
+          : secList.filter(s => s.name !== sec.name && s.change >  0.1); // only meaningfully positive
+        crossSectorPenalty = opposingSecs.length * 25; // -25 pts per opposing secondary sector
 
-      // 5. Directional Tier
+        // HARD reject ONLY if the candidate sector itself is against the trade direction
+        // (safety net — shouldn't happen since we iterate topGainers/filteredLosers)
+        if (isLong  && sec.change <= 0) continue;
+        if (!isLong && sec.change >= 0) continue;
+      }
+
+      // 5. Option Volume & Directional Dominance Confluence:
+      const callVol = (callMap[stk.symbol]?.volume) || 0;
+      const putVol  = (putMap[stk.symbol]?.volume) || 0;
+      const optVol  = isLong ? callVol : putVol;
+      // NOTE: minOptVol filter removed from spotlight — PSU BANK stocks (PNB, SBIN etc.) won't be
+      // in active_options (not top-volume stocks), but they're still valid via sector + futures.
+      // Options volume is a TIER/SCORE factor below, not a hard gate here.
+
+      // Directional Flow Confluence (only block if options data EXISTS and is clearly opposite):
+      // A Long candidate with dominant Put volume = bearish flow signal (e.g. heavy Put buying)
+      // A Short candidate with dominant Call volume = bullish flow signal (e.g. TCS 161k Calls vs 69k Puts)
+      if (callVol > 0 || putVol > 0) {  // only apply if we have options data for this stock
+        if (isLong  && putVol > callVol * 1.2) continue; // Put > 120% of Call → clear bearish flow
+        if (!isLong && callVol > putVol * 1.2) continue; // Call > 120% of Put → clear bullish flow
+      }
+
+      // 6. Futures Confluence (SOFT threshold — ignore near-flat futures):
+      // SBIN futures at -0.04% is near-flat and should NOT block a Long trade.
+      // Only hard-reject if futures show a MEANINGFUL move against the direction.
+      const futData = activeFutMap ? activeFutMap[stk.symbol] : null;
+      let futPenalty = 0;
+      if (futData) {
+        const FUT_THRESHOLD = 0.3; // ignore moves within ±0.3%
+        if (isLong  && futData.pchange < -FUT_THRESHOLD) continue; // Futures clearly in red → no Long
+        if (!isLong && futData.pchange >  FUT_THRESHOLD) continue; // Futures clearly in green → no Short
+        // Near-flat or slightly against → apply a score penalty instead
+        if (isLong  && futData.pchange < 0) futPenalty = 30;
+        if (!isLong && futData.pchange > 0) futPenalty = 30;
+      }
+
+      // 7. Directional Tier
       const hasFut = activeFutSet.has(stk.symbol);
       const hasOpt = optVol >= cfg.minOptVol;
       let tier = 0;
@@ -2914,11 +2957,11 @@ function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet,
       // Momentum weight
       const moveWeight = Math.abs(stk.pchange) * 15;
 
-      // 6. Open Condition Bonus (Open ≈ Low or Open ≈ High)
+      // 8. Open Condition Bonus (Open ≈ Low or Open ≈ High)
       const cond = checkOpenCondition(stk);
       const olBonus = (isLong && cond.isOL) ? 80 : ((!isLong && cond.isOH) ? 80 : 0);
 
-      const score = secWeight + tierWeight + moveWeight + olBonus;
+      const score = secWeight + tierWeight + moveWeight + olBonus - crossSectorPenalty - futPenalty;
 
       if (score > bestScore) {
         bestScore = score;
@@ -2939,6 +2982,9 @@ function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet,
           hasFut,
           hasOpt,
           optVol,
+          callVol,
+          putVol,
+          futPchange: futData ? futData.pchange : null,
           optContracts: optDetail.contracts_count || 1,
           isLong,
           isFallback: false
@@ -2947,75 +2993,17 @@ function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet,
     }
   }
 
-  // Pass 2: Fallback if strict directional option volume yielded no candidate across sectors
-  // (e.g. on one-sided market days where no liquid puts exist; prioritizes +FUT and sector breakdown)
-  if (!bestCand) {
-    for (let sIdx = 0; sIdx < Math.min(candidateSectors.length, 3); sIdx++) {
-      const sec = candidateSectors[sIdx];
-      const stocks = sectorStocksMap[sec.name] || [];
-
-      for (const stk of stocks) {
-        if (cfg.maxLot && stk.lot_size && stk.lot_size > cfg.maxLot) continue;
-        if (cfg.maxPct && Math.abs(stk.pchange) > cfg.maxPct) continue;
-        if (isLong && stk.pchange <= 0) continue;
-        if (!isLong && stk.pchange >= 0) continue;
-
-        const optVol = isLong ? ((callMap[stk.symbol]?.volume) || 0) : ((putMap[stk.symbol]?.volume) || 0);
-        const hasFut = activeFutSet.has(stk.symbol);
-        const hasOpt = optVol >= cfg.minOptVol;
-        let tier = 0;
-        if (hasFut && hasOpt) tier = 3;
-        else if (hasFut) tier = 2;
-        else if (hasOpt) tier = 1;
-
-        const cond = checkOpenCondition(stk);
-        const olBonus = (isLong && cond.isOL) ? 80 : ((!isLong && cond.isOH) ? 80 : 0);
-
-        const secWeight = Math.max(10, 80 - (sIdx * 25));
-        // Active Futures (+FUT) receives strong weight (+140) to lead over zero-derivative stocks
-        const tierWeight = tier === 3 ? 180 : (tier === 2 ? 140 : (optVol > 0 ? 60 : 0));
-        const moveWeight = Math.abs(stk.pchange) * 15;
-        const score = secWeight + tierWeight + moveWeight + olBonus;
-
-        if (score > bestScore) {
-          bestScore = score;
-          const optDetail = isLong ? (callMap[stk.symbol] || {}) : (putMap[stk.symbol] || {});
-          bestCand = {
-            symbol: stk.symbol,
-            ltp: stk.ltp,
-            pchange: stk.pchange,
-            lot_size: stk.lot_size,
-            open_price: stk.open_price,
-            day_high: stk.day_high,
-            day_low: stk.day_low,
-            openCond: cond,
-            sectorName: sec.name,
-            sectorChange: sec.change,
-            sectorRank: sIdx + 1,
-            tier,
-            hasFut,
-            hasOpt,
-            optVol,
-            optContracts: optDetail.contracts_count || 1,
-            isLong,
-            isFallback: true
-          };
-        }
-      }
-    }
-  }
-
   return bestCand;
 }
 
-function buildSpotlightCard(cand, isLong, cfg) {
+function buildSpotlightCard(cand, isLong, cfg, isPreMarket, scanTime) {
   if (!cand) {
     const dirTxt = isLong ? 'Long (Call)' : 'Short (Put)';
     return `
       <div class="spotlight-empty">
-        ⚠️ No qualifying <strong>${dirTxt}</strong> candidate matches all active filters.<br>
+        ⚠️ No high-confluence <strong>${dirTxt}</strong> candidate found in top sectors.<br>
         <span style="font-size:.70rem;color:var(--text3);margin-top:4px;display:inline-block;">
-          (Max Lot: ${cfg.maxLot || 'All'} | Min Vol: ${fmtVol(cfg.minOptVol)} | Max Move: ${cfg.maxPct ? cfg.maxPct + '%' : 'Off'})
+          Requires: Sector Tailwind + Positive Cash &amp; Fut + ${dirTxt.split(' ')[0]} Option Flow Dominance
         </span>
       </div>`;
   }
@@ -3029,7 +3017,7 @@ function buildSpotlightCard(cand, isLong, cfg) {
   if (cand.hasOpt) {
     badgesHtml += `<span class="badge badge-opt">[*] ${callOrPut}</span>`;
   } else if (cand.optVol > 0) {
-    badgesHtml += `<span class="badge badge-fno">[~] ${callOrPut} (Low Vol)</span>`;
+    badgesHtml += `<span class="badge badge-fno">[~] ${callOrPut}</span>`;
   } else if (cand.hasFut) {
     badgesHtml += `<span class="badge badge-fno">Futures Only</span>`;
   } else {
@@ -3042,6 +3030,11 @@ function buildSpotlightCard(cand, isLong, cfg) {
     olBadge = `<span class="spotlight-action-badge pos" style="box-shadow:0 0 8px rgba(16,185,129,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | Low: ₹${fmtNum(cand.day_low)}">🔥 OPEN = LOW (${cond.wickPct}%)</span>`;
   } else if (cond.isOH) {
     olBadge = `<span class="spotlight-action-badge neg" style="box-shadow:0 0 8px rgba(239,68,68,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | High: ₹${fmtNum(cand.day_high)}">❄️ OPEN = HIGH (${cond.wickPct}%)</span>`;
+  }
+
+  let preMarketBadge = '';
+  if (isPreMarket) {
+    preMarketBadge = `<span class="badge" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow);" title="Scan run at ${scanTime} (before 9:15 AM cash open). Indicative pre-open match.">⚠️ Pre-Market (${scanTime})</span>`;
   }
 
   let launchNote = '';
@@ -3057,6 +3050,7 @@ function buildSpotlightCard(cand, isLong, cfg) {
             ⚡ ${actionText}
           </span>
           ${olBadge}
+          ${preMarketBadge}
         </div>
         <div class="spotlight-price-box">
           <span class="spotlight-ltp">₹${fmtNum(cand.ltp)}</span>
@@ -3080,12 +3074,16 @@ function buildSpotlightCard(cand, isLong, cfg) {
           </span>
         </div>
         <div class="spotlight-metric">
-          <span class="metric-label">Option Volume</span>
-          <span class="metric-val">${cand.optVol ? fmtVol(cand.optVol) : (cand.isFallback ? '<span style="color:var(--text3)">Below Min</span>' : '—')}</span>
+          <span class="metric-label">Options Flow</span>
+          <span class="metric-val">
+            ${isLong ? `Calls: <strong>${fmtVol(cand.callVol || cand.optVol)}</strong> (Puts: ${fmtVol(cand.putVol || 0)})` : `Puts: <strong>${fmtVol(cand.putVol || cand.optVol)}</strong> (Calls: ${fmtVol(cand.callVol || 0)})`}
+          </span>
         </div>
         <div class="spotlight-metric">
           <span class="metric-label">F&amp;O Confluence</span>
-          <span class="metric-val">${badgesHtml}</span>
+          <span class="metric-val">
+            ${badgesHtml} ${cand.futPchange !== null ? `(Fut: <strong>${fmtPct(cand.futPchange)}</strong>)` : ''}
+          </span>
         </div>
       </div>
 
@@ -3096,7 +3094,7 @@ function buildSpotlightCard(cand, isLong, cfg) {
           : cand.hasOpt 
             ? 'Strong option liquidity with sector tailwind.' 
             : cand.hasFut 
-              ? 'Institutional Futures momentum (Breakdown with active +FUT).' 
+              ? 'Institutional Futures momentum with directional agreement.' 
               : 'Leading sector momentum.'}
       </div>
     </div>`;
@@ -3191,15 +3189,29 @@ function rerender() {
   const seen = new Set();
   const stockFutures = [];
   const activeFutSet = new Set();
+  const activeFutMap = {};
   (afRows[0]?.values || []).forEach(([sym, chg, ltp, vol, lot]) => {
     const s = sym.trim().toUpperCase();
     activeFutSet.add(s);
+    if (!activeFutMap[s]) {
+      activeFutMap[s] = { pchange: parseFloat(chg)||0, ltp: parseFloat(ltp)||0, volume: parseInt(vol)||0 };
+    }
     if (seen.has(s)) return;
     seen.add(s);
     const lotVal = lot ? parseInt(lot) : (lotSizes[s] || null);
     if (lotVal) lotSizes[s] = lotVal;
     if (cfgObj.maxLot && lotVal && lotVal > cfgObj.maxLot) return;
     stockFutures.push({ symbol: s, pchange: parseFloat(chg)||0, ltp: parseFloat(ltp)||0, volume: parseInt(vol)||0, lot_size: lotVal });
+  });
+
+  const stockSectorsMap = {};
+  Object.entries(sectorStocksMap).forEach(([sName, sList]) => {
+    const secObj = allSectors.find(s => s.name === sName);
+    const sChange = secObj ? secObj.change : 0;
+    sList.forEach(stk => {
+      if (!stockSectorsMap[stk.symbol]) stockSectorsMap[stk.symbol] = [];
+      stockSectorsMap[stk.symbol].push({ name: sName, change: sChange });
+    });
   });
 
   const topFutGainers = [...stockFutures].sort((a,b) => b.pchange - a.pchange).slice(0, cfgObj.futuresCount);
@@ -3256,16 +3268,19 @@ function rerender() {
   const rightOptions   = isPos ? topPuts       : topCalls;
 
   /* ── 6b. 1-Trade Spotlight Candidates ── */
-  const gainingSecs = allSectors.filter(s => s.change > 0).length ? allSectors.filter(s => s.change > 0) : topGainers;
-  const losingSecs  = allSectors.filter(s => s.change < 0).length ? [...allSectors.filter(s => s.change < 0)].reverse() : filteredLosers;
+  const scanRow = db.exec('SELECT * FROM scans WHERE scan_id = ?', [scanId]);
+  const sr = scanRow[0]?.values[0] || [];
+  const scanTime = sr[2] || '';
+  const isPreMarket = scanTime && scanTime < '09:15:00';
 
-  const topLongCand  = findSpotlightCandidate(gainingSecs, sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, true);
-  const topShortCand = findSpotlightCandidate(losingSecs,  sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, false);
+  // Strictly evaluate candidates from the top sectors displayed (topGainers and filteredLosers)
+  const topLongCand  = findSpotlightCandidate(topGainers,    sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, true,  activeFutMap, stockSectorsMap);
+  const topShortCand = findSpotlightCandidate(filteredLosers, sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, false, activeFutMap, stockSectorsMap);
 
   const leftSpotlightTitle  = isPos ? '▲ 1-TRADE FOCUS: TOP LONG CANDIDATE' : '▼ 1-TRADE FOCUS: TOP SHORT CANDIDATE';
   const rightSpotlightTitle = isPos ? '▼ 1-TRADE FOCUS: TOP SHORT CANDIDATE' : '▲ 1-TRADE FOCUS: TOP LONG CANDIDATE';
-  const leftSpotlightHtml   = isPos ? buildSpotlightCard(topLongCand, true, cfgObj) : buildSpotlightCard(topShortCand, false, cfgObj);
-  const rightSpotlightHtml  = isPos ? buildSpotlightCard(topShortCand, false, cfgObj) : buildSpotlightCard(topLongCand, true, cfgObj);
+  const leftSpotlightHtml   = isPos ? buildSpotlightCard(topLongCand, true, cfgObj, isPreMarket, scanTime) : buildSpotlightCard(topShortCand, false, cfgObj, isPreMarket, scanTime);
+  const rightSpotlightHtml  = isPos ? buildSpotlightCard(topShortCand, false, cfgObj, isPreMarket, scanTime) : buildSpotlightCard(topLongCand, true, cfgObj, isPreMarket, scanTime);
 
   const leftSecTitle  = isPos ? `▲ TOP GAINING SECTORS`  : `▼ TOP LOSING SECTORS`;
   const rightSecTitle = isPos ? `▼ TOP LOSING SECTORS`   : `▲ TOP GAINING SECTORS`;
@@ -3287,8 +3302,6 @@ function rerender() {
   const rightOptHtml = rightOptions.map((op,i) => buildOptionsRow(i+1, op, activeFutSet)).join('') || '<div class="empty-col">No data</div>';
 
   /* ── 10. DB metadata ── */
-  const scanRow = db.exec('SELECT * FROM scans WHERE scan_id = ?', [scanId]);
-  const sr = scanRow[0]?.values[0] || [];
   const totalSectors = (secRows[0]?.values || []).length;
   const totalStocks  = (stockRows[0]?.values || []).length;
   const totalAf      = (afRows[0]?.values || []).length;
