@@ -2903,7 +2903,9 @@ function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet,
         const opposingSecs = isLong
           ? secList.filter(s => s.name !== sec.name && s.change < -0.1)  // only meaningfully negative
           : secList.filter(s => s.name !== sec.name && s.change >  0.1); // only meaningfully positive
-        crossSectorPenalty = opposingSecs.length * 25; // -25 pts per opposing secondary sector
+        // Several NSE indices overlap heavily; count opposing membership once so
+        // duplicate index coverage does not multiply the penalty.
+        crossSectorPenalty = opposingSecs.length ? 25 : 0;
 
         // HARD reject ONLY if the candidate sector itself is against the trade direction
         // (safety net — shouldn't happen since we iterate topGainers/filteredLosers)
@@ -2911,21 +2913,12 @@ function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet,
         if (!isLong && sec.change >= 0) continue;
       }
 
-      // 5. Option Volume & Directional Dominance Confluence:
+      // 5. Option traded volume is a liquidity indicator, not directional flow.
       const callVol = (callMap[stk.symbol]?.volume) || 0;
       const putVol  = (putMap[stk.symbol]?.volume) || 0;
-      const optVol  = isLong ? callVol : putVol;
-      // NOTE: minOptVol filter removed from spotlight — PSU BANK stocks (PNB, SBIN etc.) won't be
-      // in active_options (not top-volume stocks), but they're still valid via sector + futures.
-      // Options volume is a TIER/SCORE factor below, not a hard gate here.
-
-      // Directional Flow Confluence (only block if options data EXISTS and is clearly opposite):
-      // A Long candidate with dominant Put volume = bearish flow signal (e.g. heavy Put buying)
-      // A Short candidate with dominant Call volume = bullish flow signal (e.g. TCS 161k Calls vs 69k Puts)
-      if (callVol > 0 || putVol > 0) {  // only apply if we have options data for this stock
-        if (isLong  && putVol > callVol * 1.2) continue; // Put > 120% of Call → clear bearish flow
-        if (!isLong && callVol > putVol * 1.2) continue; // Call > 120% of Put → clear bullish flow
-      }
+      const optVol  = callVol + putVol;
+      const hasOptionData = Object.prototype.hasOwnProperty.call(callMap, stk.symbol) ||
+                            Object.prototype.hasOwnProperty.call(putMap, stk.symbol);
 
       // 6. Futures Confluence (SOFT threshold — ignore near-flat futures):
       // SBIN futures at -0.04% is near-flat and should NOT block a Long trade.
@@ -2965,7 +2958,6 @@ function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet,
 
       if (score > bestScore) {
         bestScore = score;
-        const optDetail = isLong ? (callMap[stk.symbol] || {}) : (putMap[stk.symbol] || {});
         bestCand = {
           symbol: stk.symbol,
           ltp: stk.ltp,
@@ -2982,11 +2974,12 @@ function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet,
           hasFut,
           hasOpt,
           optVol,
+          hasOptionData,
           callVol,
           putVol,
           futPchange: futData ? futData.pchange : null,
-          optContracts: optDetail.contracts_count || 1,
           isLong,
+          score,
           isFallback: false
         };
       }
@@ -2996,40 +2989,39 @@ function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet,
   return bestCand;
 }
 
-function buildSpotlightCard(cand, isLong, cfg, isPreMarket, scanTime) {
+function buildSpotlightCard(cand, isLong, cfg, isPreMarket, scanTime, niftyChange) {
   if (!cand) {
-    const dirTxt = isLong ? 'Long (Call)' : 'Short (Put)';
+    const dirTxt = isLong ? 'Long' : 'Short';
     return `
       <div class="spotlight-empty">
-        ⚠️ No high-confluence <strong>${dirTxt}</strong> candidate found in top sectors.<br>
+        ⚠️ No eligible <strong>${dirTxt}</strong> candidate found in the displayed sectors.<br>
         <span style="font-size:.70rem;color:var(--text3);margin-top:4px;display:inline-block;">
-          Requires: Sector Tailwind + Positive Cash &amp; Fut + ${dirTxt.split(' ')[0]} Option Flow Dominance
+          Adjust lot-size or max-move filters to broaden the candidate set.
         </span>
       </div>`;
   }
 
-  const callOrPut = isLong ? 'CALL' : 'PUT';
-  const actionText = isLong ? 'BUY CALL' : 'BUY PUT';
+  const actionText = isLong ? 'LONG CANDIDATE' : 'SHORT CANDIDATE';
   const secName = cand.sectorName ? cand.sectorName.replace('NIFTY ', '') : '—';
   
   let badgesHtml = '';
   if (cand.hasFut) badgesHtml += '<span class="badge badge-fut">+FUT</span> ';
   if (cand.hasOpt) {
-    badgesHtml += `<span class="badge badge-opt">[*] ${callOrPut}</span>`;
+    badgesHtml += '<span class="badge badge-opt">[*] OPTIONS</span>';
   } else if (cand.optVol > 0) {
-    badgesHtml += `<span class="badge badge-fno">[~] ${callOrPut}</span>`;
+    badgesHtml += '<span class="badge badge-fno">[~] OPTIONS</span>';
   } else if (cand.hasFut) {
     badgesHtml += `<span class="badge badge-fno">Futures Only</span>`;
   } else {
-    badgesHtml += `<span class="badge badge-fno">No Options</span>`;
+    badgesHtml += '<span class="badge badge-fno">Not in options feed</span>';
   }
 
   const cond = cand.openCond || checkOpenCondition(cand);
   let olBadge = '';
   if (cond.isOL) {
-    olBadge = `<span class="spotlight-action-badge pos" style="box-shadow:0 0 8px rgba(16,185,129,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | Low: ₹${fmtNum(cand.day_low)}">🔥 OPEN = LOW (${cond.wickPct}%)</span>`;
+    olBadge = `<span class="spotlight-action-badge pos" style="box-shadow:0 0 8px rgba(16,185,129,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | Low: ₹${fmtNum(cand.day_low)}">OPEN NEAR LOW (${cond.wickPct}%)</span>`;
   } else if (cond.isOH) {
-    olBadge = `<span class="spotlight-action-badge neg" style="box-shadow:0 0 8px rgba(239,68,68,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | High: ₹${fmtNum(cand.day_high)}">❄️ OPEN = HIGH (${cond.wickPct}%)</span>`;
+    olBadge = `<span class="spotlight-action-badge neg" style="box-shadow:0 0 8px rgba(239,68,68,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | High: ₹${fmtNum(cand.day_high)}">OPEN NEAR HIGH (${cond.wickPct}%)</span>`;
   }
 
   let preMarketBadge = '';
@@ -3037,9 +3029,11 @@ function buildSpotlightCard(cand, isLong, cfg, isPreMarket, scanTime) {
     preMarketBadge = `<span class="badge" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow);" title="Scan run at ${scanTime} (before 9:15 AM cash open). Indicative pre-open match.">⚠️ Pre-Market (${scanTime})</span>`;
   }
 
-  let launchNote = '';
-  if (cond.isOL) launchNote = `🔥 Clean Open = Low institutional launch (${cond.wickPct}% bottom wick). `;
-  else if (cond.isOH) launchNote = `❄️ Clean Open = High institutional dump (${cond.wickPct}% upper wick). `;
+  const marketContext = niftyChange > 0
+    ? (isLong ? 'Aligned with NIFTY' : 'Against NIFTY')
+    : niftyChange < 0
+      ? (isLong ? 'Against NIFTY' : 'Aligned with NIFTY')
+      : 'NIFTY flat';
 
   return `
     <div class="spotlight-card ${isLong ? 'spotlight-long' : 'spotlight-short'}">
@@ -3060,7 +3054,7 @@ function buildSpotlightCard(cand, isLong, cfg, isPreMarket, scanTime) {
 
       <div class="spotlight-details">
         <div class="spotlight-metric">
-          <span class="metric-label">Sector Tailwind</span>
+          <span class="metric-label">Sector Move</span>
           <span class="metric-val">${secName} <strong>${fmtPct(cand.sectorChange)}</strong></span>
         </div>
         <div class="spotlight-metric">
@@ -3070,17 +3064,25 @@ function buildSpotlightCard(cand, isLong, cfg, isPreMarket, scanTime) {
         <div class="spotlight-metric">
           <span class="metric-label">Candle Structure</span>
           <span class="metric-val">
-            ${cond.isOL ? '<strong style="color:var(--green)">🔥 O=L (' + cond.wickPct + '%)</strong>' : (cond.isOH ? '<strong style="color:var(--red)">❄️ O=H (' + cond.wickPct + '%)</strong>' : (cand.open_price ? 'Open: ₹' + fmtNum(cand.open_price) : '—'))}
+            ${cond.isOL ? '<strong style="color:var(--green)">Near low (' + cond.wickPct + '%)</strong>' : (cond.isOH ? '<strong style="color:var(--red)">Near high (' + cond.wickPct + '%)</strong>' : (cand.open_price ? 'Open: ₹' + fmtNum(cand.open_price) : '—'))}
           </span>
         </div>
         <div class="spotlight-metric">
-          <span class="metric-label">Options Flow</span>
+          <span class="metric-label">Options Traded Volume</span>
           <span class="metric-val">
-            ${isLong ? `Calls: <strong>${fmtVol(cand.callVol || cand.optVol)}</strong> (Puts: ${fmtVol(cand.putVol || 0)})` : `Puts: <strong>${fmtVol(cand.putVol || cand.optVol)}</strong> (Calls: ${fmtVol(cand.callVol || 0)})`}
+            ${cand.hasOptionData ? `Calls: <strong>${fmtVol(cand.callVol)}</strong> (Puts: ${fmtVol(cand.putVol)})` : 'Not listed in active options data'}
           </span>
         </div>
         <div class="spotlight-metric">
-          <span class="metric-label">F&amp;O Confluence</span>
+          <span class="metric-label">NIFTY Context</span>
+          <span class="metric-val">${marketContext} <strong>${fmtPct(niftyChange)}</strong></span>
+        </div>
+        <div class="spotlight-metric">
+          <span class="metric-label">Rule Score</span>
+          <span class="metric-val"><strong>${cand.score.toFixed(1)}</strong> (heuristic)</span>
+        </div>
+        <div class="spotlight-metric">
+          <span class="metric-label">F&amp;O Activity</span>
           <span class="metric-val">
             ${badgesHtml} ${cand.futPchange !== null ? `(Fut: <strong>${fmtPct(cand.futPchange)}</strong>)` : ''}
           </span>
@@ -3088,14 +3090,15 @@ function buildSpotlightCard(cand, isLong, cfg, isPreMarket, scanTime) {
       </div>
 
       <div class="spotlight-summary-bar ${isLong ? 'pos-bar' : 'neg-bar'}">
-        🎯 <strong>1-Trade Focus:</strong> Top pick in <strong>${secName}</strong> (Rank #${cand.sectorRank}). 
-        ${launchNote}${cand.hasFut && cand.hasOpt 
-          ? 'Maximum confluence: Active in both Futures and liquid Options.' 
-          : cand.hasOpt 
-            ? 'Strong option liquidity with sector tailwind.' 
-            : cand.hasFut 
-              ? 'Institutional Futures momentum with directional agreement.' 
-              : 'Leading sector momentum.'}
+        🎯 <strong>Ranked candidate:</strong> <strong>${secName}</strong> sector (Rank #${cand.sectorRank}).
+        ${cand.hasFut && cand.hasOpt
+          ? 'Present in active futures and options data.'
+          : cand.hasOpt
+            ? 'Options traded volume meets the configured threshold.'
+            : cand.hasFut
+              ? 'Present in the active futures data.'
+              : 'Selected by sector rank, price change, and candle rules.'}
+        Options volume does not show whether trades were buys or sells.
       </div>
     </div>`;
 }
@@ -3235,7 +3238,7 @@ function rerender() {
       const v   = parseInt(vol) || 0;
       const c   = parseInt(cnt) || 1;
       const t   = (otype || '').trim().toLowerCase();
-      optLiqMap[s] = Math.max(optLiqMap[s] || 0, v);
+      optLiqMap[s] = (optLiqMap[s] || 0) + v;
 
       const target = t === 'put' ? putMap : callMap;
       if (!target[s]) target[s] = { volume: 0, contracts_count: 0 };
@@ -3277,10 +3280,10 @@ function rerender() {
   const topLongCand  = findSpotlightCandidate(topGainers,    sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, true,  activeFutMap, stockSectorsMap);
   const topShortCand = findSpotlightCandidate(filteredLosers, sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, false, activeFutMap, stockSectorsMap);
 
-  const leftSpotlightTitle  = isPos ? '▲ 1-TRADE FOCUS: TOP LONG CANDIDATE' : '▼ 1-TRADE FOCUS: TOP SHORT CANDIDATE';
-  const rightSpotlightTitle = isPos ? '▼ 1-TRADE FOCUS: TOP SHORT CANDIDATE' : '▲ 1-TRADE FOCUS: TOP LONG CANDIDATE';
-  const leftSpotlightHtml   = isPos ? buildSpotlightCard(topLongCand, true, cfgObj, isPreMarket, scanTime) : buildSpotlightCard(topShortCand, false, cfgObj, isPreMarket, scanTime);
-  const rightSpotlightHtml  = isPos ? buildSpotlightCard(topShortCand, false, cfgObj, isPreMarket, scanTime) : buildSpotlightCard(topLongCand, true, cfgObj, isPreMarket, scanTime);
+  const leftSpotlightTitle  = isPos ? '▲ TOP LONG CANDIDATE' : '▼ TOP SHORT CANDIDATE';
+  const rightSpotlightTitle = isPos ? '▼ TOP SHORT CANDIDATE' : '▲ TOP LONG CANDIDATE';
+  const leftSpotlightHtml   = isPos ? buildSpotlightCard(topLongCand, true, cfgObj, isPreMarket, scanTime, niftyChange) : buildSpotlightCard(topShortCand, false, cfgObj, isPreMarket, scanTime, niftyChange);
+  const rightSpotlightHtml  = isPos ? buildSpotlightCard(topShortCand, false, cfgObj, isPreMarket, scanTime, niftyChange) : buildSpotlightCard(topLongCand, true, cfgObj, isPreMarket, scanTime, niftyChange);
 
   const leftSecTitle  = isPos ? `▲ TOP GAINING SECTORS`  : `▼ TOP LOSING SECTORS`;
   const rightSecTitle = isPos ? `▼ TOP LOSING SECTORS`   : `▲ TOP GAINING SECTORS`;
@@ -3310,10 +3313,10 @@ function rerender() {
   const grid = document.getElementById('content-grid');
   grid.innerHTML = `
 
-    <!-- 1-TRADE SPOTLIGHT CARD -->
+    <!-- RANKED CANDIDATE CARDS -->
     <div class="section-card" id="card-spotlight">
       <div class="section-header" onclick="toggleCard(this)">
-        <span class="section-title yellow">🎯 1-TRADE SPOTLIGHT — HIGH CONVICTION CANDIDATE</span>
+        <span class="section-title yellow">🎯 RANKED LONG &amp; SHORT CANDIDATES</span>
         <span class="collapse-icon">▾</span>
       </div>
       <div class="section-body">
