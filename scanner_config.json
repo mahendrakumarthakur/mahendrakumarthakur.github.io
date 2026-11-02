@@ -1,0 +1,20 @@
+{
+  "max_lot_size": 1500,
+  "sectors_to_show": 3,
+  "stocks_per_sector": 3,
+  "active_futures_count": 10,
+  "min_option_volume": 500,
+  "max_percentage": 5.0,
+  "top_n_candidates": 3,
+    "weights": {
+      "price": 3.0,
+      "sector": 2.0,
+      "options": 2.0,
+      "futures": 1.5,
+      "ohlc": 1.0,
+      "breadth": 1.0
+    },
+  "ext_penalty_start": 0.02,
+  "ext_penalty_end": 0.08,
+  "db_file": "market_scanner.db"
+}

@@ -481,6 +481,7 @@ body {
   font-weight: 700;
   padding: 2px 10px;
   border-radius: 4px;
+  white-space: nowrap;
 }
 .nifty-change.pos { background: var(--green-bg); color: var(--green); }
 .nifty-change.neg { background: var(--red-bg);   color: var(--red);   }
@@ -501,6 +502,141 @@ body {
   color: var(--text2);
   font-family: var(--font-mono);
   line-height: 1.6;
+}
+
+/* Top Pick Widget in Nifty Strip */
+.top-pick-widget {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.top-pick-divider {
+  width: 1px;
+  height: 38px;
+  background: var(--border);
+}
+.top-pick-box {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 12px;
+  transition: var(--transition);
+}
+.top-pick-box.pos {
+  border-color: rgba(63, 185, 80, 0.4);
+  background: rgba(63, 185, 80, 0.05);
+}
+.top-pick-box.neg {
+  border-color: rgba(255, 107, 94, 0.4);
+  background: rgba(255, 107, 94, 0.05);
+}
+.top-pick-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+}
+.top-pick-badge {
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.top-pick-dir-tag {
+  font-size: .65rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+.top-pick-dir-tag.pos { background: var(--green-bg); color: var(--green); }
+.top-pick-dir-tag.neg { background: var(--red-bg);   color: var(--red);   }
+.top-pick-score {
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--yellow);
+  background: var(--yellow-bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: help;
+}
+.top-pick-data-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.top-pick-symbol {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: .02em;
+  cursor: pointer;
+  text-decoration: underline dotted var(--text3);
+}
+.top-pick-symbol:hover {
+  color: var(--accent);
+  text-decoration: underline solid var(--accent);
+}
+.top-pick-change {
+  font-family: var(--font-mono);
+  font-size: .88rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.top-pick-change.pos { background: var(--green-bg); color: var(--green); }
+.top-pick-change.neg { background: var(--red-bg);   color: var(--red);   }
+.top-pick-ltp {
+  font-family: var(--font-mono);
+  font-size: .85rem;
+  color: var(--text);
+  font-weight: 600;
+}
+.top-pick-lot {
+  font-family: var(--font-mono);
+  font-size: .75rem;
+  color: var(--text2);
+}
+.top-pick-sector {
+  font-family: var(--font-mono);
+  font-size: .76rem;
+  color: var(--text2);
+  background: var(--bg3);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.top-pick-strike {
+  font-family: var(--font-mono);
+  font-size: .80rem;
+  font-weight: 700;
+  color: var(--cyan);
+  background: var(--cyan-bg);
+  border: 1px solid rgba(86, 212, 221, 0.35);
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: .02em;
+  transition: all var(--transition);
+  user-select: all;
+}
+.top-pick-strike:hover {
+  background: rgba(86, 212, 221, 0.25);
+  border-color: var(--cyan);
+  transform: translateY(-1px);
+}
+.top-pick-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Controls bar */
@@ -623,7 +759,6 @@ body {
   width: 100%;
   box-sizing: border-box;
 }
-
 .section-header {
   display: flex;
   align-items: center;
@@ -747,144 +882,6 @@ body {
 .col-header.yellow { color: var(--yellow); }
 
 /* =====================================================================
-   Top Trading Candidates (Spotlight)
-   ===================================================================== */
-.spotlight-wrap {
-  padding: 12px 14px;
-}
-.spotlight-card {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  position: relative;
-  overflow: hidden;
-  transition: all var(--transition);
-}
-.spotlight-card.spotlight-long {
-  border-left: 4px solid var(--green);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--bg3) 100%);
-}
-.spotlight-card.spotlight-short {
-  border-left: 4px solid var(--red);
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.06) 0%, var(--bg3) 100%);
-}
-
-.spotlight-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.spotlight-sym-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.spotlight-sym {
-  font-size: 1.15rem;
-  font-weight: 800;
-  font-family: 'JetBrains Mono', var(--font-mono);
-  color: var(--text);
-  letter-spacing: .02em;
-}
-.spotlight-action-badge {
-  font-size: .68rem;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-}
-.spotlight-action-badge.pos {
-  background: var(--green-bg);
-  color: var(--green);
-  border: 1px solid var(--green);
-}
-.spotlight-action-badge.neg {
-  background: var(--red-bg);
-  color: var(--red);
-  border: 1px solid var(--red);
-}
-
-.spotlight-price-box {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-family: 'JetBrains Mono', var(--font-mono);
-}
-.spotlight-ltp {
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--text);
-}
-.spotlight-pct {
-  font-size: .88rem;
-  font-weight: 700;
-}
-.spotlight-pct.pos { color: var(--green); }
-.spotlight-pct.neg { color: var(--red); }
-
-.spotlight-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 8px;
-  background: var(--bg2);
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  margin-bottom: 8px;
-}
-.spotlight-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.metric-label {
-  font-size: .65rem;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  font-weight: 600;
-}
-.metric-val {
-  font-size: .80rem;
-  color: var(--text);
-  font-family: 'JetBrains Mono', var(--font-mono);
-}
-.metric-val strong {
-  color: var(--text);
-}
-
-.spotlight-summary-bar {
-  font-size: .74rem;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  color: var(--text2);
-  line-height: 1.4;
-}
-.spotlight-summary-bar.pos-bar {
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px dashed rgba(16, 185, 129, 0.3);
-}
-.spotlight-summary-bar.neg-bar {
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px dashed rgba(239, 68, 68, 0.3);
-}
-.spotlight-empty {
-  padding: 16px 12px;
-  text-align: center;
-  color: var(--text3);
-  font-size: .78rem;
-  line-height: 1.5;
-  background: var(--bg3);
-  border-radius: var(--radius-sm);
-  border: 1px dashed var(--border);
-}
-
-/* =====================================================================
    Sector sub-panel
    ===================================================================== */
 .sector-panel {
@@ -920,6 +917,17 @@ body {
   color: var(--text);
   flex: 1;
   margin-left: 4px;
+}
+.sector-best-stock {
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--cyan-bg);
+  border-radius: 10px;
+  padding: 2px 7px;
+  margin: 0 8px;
+  white-space: nowrap;
 }
 .pct-badge {
   font-family: var(--font-mono);
@@ -958,6 +966,38 @@ body {
 /* % change — fixed width, right-aligned */
 .stock-pct { width: 58px; text-align: right; flex-shrink: 0; font-weight: 600; }
 
+.stock-ltp {
+  color: var(--text2);
+  font-size: .80rem;
+  font-weight: 500;
+  width: 76px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+.stock-strike {
+  font-family: var(--font-mono);
+  font-size: .73rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: .02em;
+  cursor: help;
+}
+.stock-strike.ce {
+  color: var(--green);
+  background: var(--green-bg);
+  border: 1px solid rgba(86, 211, 100, 0.25);
+}
+.stock-strike.pe {
+  color: var(--red);
+  background: var(--red-bg);
+  border: 1px solid rgba(248, 81, 73, 0.25);
+}
+
 /* badges sit RIGHT after the % — no spacer */
 .stock-badges {
   display: flex;
@@ -972,6 +1012,16 @@ body {
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+/* L (ext above day low) / B (futures basis) inline metric chips */
+.stock-metric {
+  font-family: var(--font-mono);
+  font-size: .70rem;
+  color: var(--text3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.stock-metric.warn { color: var(--yellow); font-weight: 700; }
 
 .badge {
   display: inline-flex;
@@ -990,6 +1040,8 @@ body {
 .badge-fno  { background: var(--yellow-bg); color: var(--yellow); }
 .badge-ol   { background: rgba(16, 185, 129, 0.18); color: var(--green); border: 1px solid var(--green); box-shadow: 0 0 6px rgba(16, 185, 129, 0.25); font-weight: 800; }
 .badge-oh   { background: rgba(239, 68, 68, 0.18); color: var(--red); border: 1px solid var(--red); box-shadow: 0 0 6px rgba(239, 68, 68, 0.25); font-weight: 800; }
+.badge-ext  { background: rgba(245, 158, 11, 0.18); color: var(--yellow, #f59e0b); border: 1px solid var(--yellow, #f59e0b); box-shadow: 0 0 6px rgba(245, 158, 11, 0.3); font-weight: 800; }
+.badge-noopt { background: rgba(248, 81, 73, 0.10); color: var(--red); border: 1px dashed rgba(248, 81, 73, 0.55); font-weight: 700; letter-spacing: .02em; }
 
 /* =====================================================================
    Futures table
@@ -1186,6 +1238,7 @@ body {
   .nifty-change {
     font-size: .88rem;
     padding: 2px 6px;
+    white-space: nowrap;
   }
   .nifty-meta {
     margin-left: 0;
@@ -1198,6 +1251,9 @@ body {
     display: flex;
     justify-content: space-between;
   }
+  .top-pick-divider { display: none; }
+  .top-pick-widget { width: 100%; margin-top: 4px; }
+  .top-pick-box { width: 100%; }
 
   /* Controls bar on mobile */
   .controls-bar {
@@ -1274,6 +1330,14 @@ body {
   .stock-pct {
     width: 50px;
     font-size: .76rem;
+  }
+  .stock-ltp {
+    font-size: .72rem;
+    width: 60px;
+  }
+  .stock-strike {
+    font-size: .68rem;
+    padding: 1px 4px;
   }
   .stock-lot {
     font-size: .68rem;
@@ -1701,6 +1765,28 @@ kbd {
       </div>
       <div id="nifty-change" class="nifty-change pos">—</div>
       <div id="nifty-dir" class="nifty-direction pos">—</div>
+
+      <!-- Top 1 Stock Pick (Best F&O Stock aligned with NIFTY) -->
+      <div class="top-pick-widget" id="top-pick-widget" style="display:none;">
+        <div class="top-pick-divider"></div>
+        <div class="top-pick-box" id="top-pick-box">
+          <div class="top-pick-tag-row">
+            <span class="top-pick-badge">🎯 TOP PICK</span>
+            <span class="top-pick-dir-tag" id="top-pick-dir-tag">BEARISH</span>
+            <span class="top-pick-score" id="top-pick-score" title="Score breakdown">Score: —</span>
+          </div>
+          <div class="top-pick-data-row">
+            <span class="top-pick-symbol" id="top-pick-symbol" title="Click to filter this stock in panels below">—</span>
+            <span class="top-pick-change" id="top-pick-change">—</span>
+            <span class="top-pick-ltp" id="top-pick-ltp">—</span>
+            <span class="top-pick-lot" id="top-pick-lot">—</span>
+            <span class="top-pick-sector" id="top-pick-sector">—</span>
+            <span class="top-pick-strike" id="top-pick-strike" title="Recommended Option Strike">—</span>
+            <span class="top-pick-badges" id="top-pick-badges"></span>
+          </div>
+        </div>
+      </div>
+
       <div class="nifty-meta" id="nifty-meta"></div>
     </div>
   </div>
@@ -1801,8 +1887,23 @@ kbd {
       <input type="number" id="cfg-optvolume" value="500" min="0" oninput="onConfigChange('cfg-optvolume')" onchange="onConfigChange('cfg-optvolume')"/>
     </div>
     <div class="filter-item">
-      <label>Max % Move <span class="filter-hint">(0 = off)</span></label>
-      <input type="number" id="cfg-maxpct" value="5" min="0" step="0.5" oninput="onConfigChange('cfg-maxpct')" onchange="onConfigChange('cfg-maxpct')"/>
+      <label>Max % Move <span class="filter-hint">(0 = off · hides moves ≥ this %)</span></label>
+      <input type="number" id="cfg-maxpct" value="0" min="0" step="0.5" oninput="onConfigChange('cfg-maxpct')" onchange="onConfigChange('cfg-maxpct')"/>
+    </div>
+
+    <!-- Unified Master Config (scanner_config.json) -->
+    <div class="filter-item" style="min-width:210px;">
+      <label>Master Config <span class="filter-hint">(scanner_config.json)</span></label>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:2px;">
+        <button class="btn btn-secondary btn-sm" onclick="exportScannerConfig()" title="Export current settings to scanner_config.json file">💾 Save JSON</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cfg-file-input').click()" title="Load scanner_config.json from disk">📁 Load JSON</button>
+        <input type="file" id="cfg-file-input" accept=".json" style="display:none" onchange="importScannerConfigFile(this)"/>
+      </div>
+    </div>
+    <div class="filter-item" style="flex:1 1 100%;margin-top:-2px;">
+      <div id="config-sync-info" style="font-size:.72rem;color:var(--text3);font-family:var(--font-mono);">
+        📁 Synced with <code>scanner_config.json</code>
+      </div>
     </div>
   </div>
 
@@ -1862,6 +1963,116 @@ const CONFIG_IDS = [
   'cfg-optvolume',
   'cfg-maxpct'
 ];
+
+let unifiedConfig = {
+  max_lot_size: 1500,
+  sectors_to_show: 2,
+  stocks_per_sector: 10,
+  active_futures_count: 10,
+  min_option_volume: 500,
+  max_percentage: 0.0,
+  top_n_candidates: 3,
+  weights: { price: 3.0, sector: 2.0, options: 2.0, futures: 1.5, ohlc: 1.0, breadth: 1.0 },
+  ext_penalty_start: 0.02,
+  ext_penalty_end: 0.08,
+  db_file: "market_scanner.db"
+};
+
+function applyUnifiedConfig(cfg, sourceLabel = 'scanner_config.json') {
+  if (!cfg) return;
+  unifiedConfig = { ...unifiedConfig, ...cfg };
+  if (cfg.weights && typeof cfg.weights === 'object') {
+    unifiedConfig.weights = { ...unifiedConfig.weights, ...cfg.weights };
+  }
+
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val !== undefined && val !== null) {
+      el.value = val;
+      localStorage.setItem('nse_' + id, String(val));
+    }
+  };
+
+  setVal('cfg-lotsize', unifiedConfig.max_lot_size);
+  setVal('cfg-sectors', unifiedConfig.sectors_to_show);
+  setVal('cfg-stocks', unifiedConfig.stocks_per_sector);
+  setVal('cfg-futures', unifiedConfig.active_futures_count);
+  setVal('cfg-optvolume', unifiedConfig.min_option_volume);
+  setVal('cfg-maxpct', unifiedConfig.max_percentage);
+
+  const infoEl = document.getElementById('config-sync-info');
+  if (infoEl) {
+    infoEl.innerHTML = `📁 Config loaded from <b>${sourceLabel}</b> (Lot: ${unifiedConfig.max_lot_size}, Sectors: ${unifiedConfig.sectors_to_show}, Stocks: ${unifiedConfig.stocks_per_sector})`;
+  }
+
+  if (typeof currentScanId !== 'undefined' && currentScanId) {
+    rerender();
+  }
+}
+
+function syncConfigFromDb(database) {
+  if (!database) return;
+  try {
+    const res = database.exec("SELECT key, value FROM app_config;");
+    if (res.length && res[0].values) {
+      const dbCfg = {};
+      res[0].values.forEach(([k, v]) => {
+        try { dbCfg[k] = JSON.parse(v); } catch(e) { dbCfg[k] = v; }
+      });
+      applyUnifiedConfig(dbCfg, 'Database app_config');
+    }
+  } catch(e) {}
+}
+
+async function tryFetchScannerConfig() {
+  try {
+    const resp = await fetch('scanner_config.json');
+    if (resp.ok) {
+      const json = await resp.json();
+      applyUnifiedConfig(json, 'scanner_config.json');
+    }
+  } catch(e) {}
+}
+
+function exportScannerConfig() {
+  const currentCfg = {
+    max_lot_size: parseInt(document.getElementById('cfg-lotsize')?.value) || 0,
+    sectors_to_show: parseInt(document.getElementById('cfg-sectors')?.value) || 2,
+    stocks_per_sector: parseInt(document.getElementById('cfg-stocks')?.value) || 10,
+    active_futures_count: parseInt(document.getElementById('cfg-futures')?.value) || 10,
+    min_option_volume: parseInt(document.getElementById('cfg-optvolume')?.value) || 500,
+    max_percentage: parseFloat(document.getElementById('cfg-maxpct')?.value) || 0.0,
+    top_n_candidates: unifiedConfig.top_n_candidates || 3,
+    weights: unifiedConfig.weights || { price: 3.0, sector: 2.0, options: 2.0, futures: 1.5, ohlc: 1.0 },
+    db_file: unifiedConfig.db_file || "market_scanner.db"
+  };
+
+  const str = JSON.stringify(currentCfg, null, 2);
+  const blob = new Blob([str], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'scanner_config.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('💾', 'scanner_config.json exported', 'Replace the file in your project folder', '');
+}
+
+function importScannerConfigFile(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const json = JSON.parse(e.target.result);
+      applyUnifiedConfig(json, file.name);
+      showToast('✓', 'Config applied!', `Loaded from ${file.name}`, '');
+    } catch(err) {
+      alert('Error parsing JSON config: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
 
 function loadSavedConfigs() {
   CONFIG_IDS.forEach(id => {
@@ -2019,6 +2230,7 @@ async function checkLastFile() {
    3. Otherwise (file:/// or local disk), check last saved handle.
 */
 (async function initApp() {
+  await tryFetchScannerConfig();
   const isGitHub = location.hostname.includes('github.io');
   
   if (isGitHub) {
@@ -2087,6 +2299,7 @@ async function loadBuffer(buf, label) {
 
     setStatus('ok', `✓ Loaded: ${label}`);
     updateDbIndicator(label);
+    syncConfigFromDb(db);
     populateDateSelect();
     showViewer();
   } catch (err) {
@@ -2669,7 +2882,7 @@ function showScanToast(dir, idx, total, dateOverride) {
   const meta    = scanMetaMap[sid];
   const label   = meta ? meta.time : (opts[idx]?.text || '');
   const pos     = `Scan ${idx + 1} / ${total}`;
-  const nifty   = (meta && meta.ltp) ? `NIFTY ${fmtNum(meta.ltp)} ${fmtPct(meta.chg)}` : '';
+  const nifty   = (meta && meta.ltp) ? `NIFTY ${fmtNum(meta.ltp)} ${fmtNiftyChange(meta.ltp, meta.chg)}` : '';
   showToast(arrow, label, pos, nifty);
 }
 
@@ -2709,6 +2922,19 @@ function fmtPct(v) {
   const n = parseFloat(v);
   return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
 }
+function fmtPts(pts) {
+  if (pts == null || isNaN(pts)) return '—';
+  const n = parseFloat(pts) || 0;
+  if (Math.abs(n) < 0.0001) return '+0.00';
+  const sign = n > 0 ? '+' : '';
+  return sign + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtNiftyChange(ltp, chg) {
+  const l = parseFloat(ltp) || 0;
+  const c = parseFloat(chg) || 0;
+  const pts = (l && c && (100 + c !== 0)) ? (l * c) / (100 + c) : 0;
+  return `${fmtPts(pts)} (${fmtPct(c)})`;
+}
 function pctClass(v) {
   const n = parseFloat(v);
   if (n > 0) return 'pos'; if (n < 0) return 'neg'; return 'zero';
@@ -2725,6 +2951,8 @@ function clearNiftyStrip() {
   document.getElementById('nifty-change').textContent = '—';
   document.getElementById('nifty-dir').textContent = '—';
   document.getElementById('nifty-meta').textContent = '';
+  const tp = document.getElementById('top-pick-widget');
+  if (tp) tp.style.display = 'none';
 }
 
 /* ────────────────────────────────────────────
@@ -2740,8 +2968,32 @@ function pctText(val) {
   return `<span class="${cl}-text">${fmtPct(val)}</span>`;
 }
 
+function isOhlcDataReliable(stocks, badFractionLimit = 0.10) {
+  const bySymbol = new Map();
+  (stocks || []).forEach(stk => {
+    const sym = String(stk.symbol || '').trim().toUpperCase();
+    if (sym && !bySymbol.has(sym)) bySymbol.set(sym, stk);
+  });
+  if (!bySymbol.size) return false;
+
+  let badCount = 0;
+  bySymbol.forEach(stk => {
+    const op = Number(stk.open_price) || 0;
+    const high = Number(stk.day_high) || 0;
+    const low = Number(stk.day_low) || 0;
+    if (op <= 0 || high <= 0 || low <= 0 || high < op || low > op || high < low || high - low <= 0.01) {
+      badCount++;
+    }
+  });
+  return badCount / bySymbol.size < badFractionLimit;
+}
+
 function checkOpenCondition(stk) {
-  if (!stk || !stk.open_price || stk.open_price <= 0) return { isOL: false, isOH: false, wickPct: 0 };
+  if (!stk || stk.ohlc_data_reliable === false || !stk.open_price || stk.open_price <= 0 ||
+      !stk.day_high || stk.day_high <= 0 || !stk.day_low || stk.day_low <= 0 ||
+      stk.day_high < stk.day_low || stk.day_high - stk.day_low <= 0.01) {
+    return { isOL: false, isOH: false, wickPct: 0 };
+  }
 
   // Open ≈ Low check for Gainers / Long (Call)
   // Low should be within 0.15% of Open (almost zero bottom wick)
@@ -2781,18 +3033,104 @@ function stockBadges(stk, activeFutSet, optLiqMap, minOptVol) {
 
   if (hasFut)   html += `<span class="badge badge-fut" title="Active Futures">+FUT</span> `;
   if (isTopOpt) html += `<span class="badge badge-opt" title="Top Active Option (vol ${fmtVol(optVol)})">[*]</span> `;
-  else if (isFnoOpt) html += `<span class="badge badge-fno" title="F&O Option (vol ${fmtVol(optVol)})">[~]</span> `;
+  else if (isFnoOpt) html += `<span class="badge badge-fno" title="F&O Option, below the ${fmtVol(minOptVol)} volume threshold (vol ${fmtVol(optVol)})">[~]</span> `;
+  else html += `<span class="badge badge-noopt" title="No option activity in this scan's snapshot — thin book, wide spreads, slippage on entry/exit. Not scalp-able.">[--]</span> `;
   return html;
 }
 
-function buildStockRow(stk, activeFutSet, optLiqMap, minOptVol) {
+function formatExpiryForBroker(rawExpiry) {
+  if (!rawExpiry) return '';
+  const parts = rawExpiry.replace(/-/g, ' ').trim().split(/\s+/);
+  if (parts.length >= 2) {
+    const day = parts[0].padStart(2, '0');
+    const month = parts[1].charAt(0).toUpperCase() + parts[1].slice(1, 3).toLowerCase();
+    return `${day} ${month}`;
+  }
+  return rawExpiry;
+}
+
+function copySahiContract(el, text) {
+  if (!text) return;
+  const doFeedback = () => {
+    const orig = el.textContent;
+    el.textContent = '✓ Copied!';
+    setTimeout(() => { el.textContent = orig; }, 1400);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(doFeedback).catch(() => {
+      fallbackCopyText(text);
+      doFeedback();
+    });
+  } else {
+    fallbackCopyText(text);
+    doFeedback();
+  }
+}
+
+function fallbackCopyText(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+function getStrikeStep(ltp) {
+  if (ltp <= 50) return 1.0;
+  if (ltp <= 100) return 2.5;
+  if (ltp <= 250) return 5.0;
+  if (ltp <= 500) return 10.0;
+  if (ltp <= 1000) return ltp > 700 ? 20.0 : 10.0;
+  if (ltp <= 2500) return ltp > 1800 ? 50.0 : 20.0;
+  if (ltp <= 5000) return ltp > 3500 ? 100.0 : 50.0;
+  if (ltp <= 10000) return 100.0;
+  return ltp > 20000 ? 200.0 : 100.0;
+}
+
+function buildStockRow(stk, activeFutSet, optLiqMap, minOptVol, secIsGain, defaultExpiry) {
   const badges = stockBadges(stk, activeFutSet, optLiqMap, minOptVol);
-  const lotStr  = stk.lot_size ? `Lot: ${stk.lot_size}` : '';
+  const lotStr = stk.lot_size ? `Lot: ${stk.lot_size}` : '';
+
+  // L = % above day low (amber when extended = chase risk), B = futures basis vs spot
+  let metricsHtml = '';
+  if (stk.ext_low != null && isFinite(stk.ext_low)) {
+    const warn = stk.ext_low >= 4;
+    metricsHtml += `<span class="stock-metric${warn ? ' warn' : ''}" title="${stk.ext_low.toFixed(1)}% above day low${warn ? ' — extended from support, chase risk' : ''}">L+${stk.ext_low.toFixed(1)}</span>`;
+  }
+  if (stk.basis != null && isFinite(stk.basis)) {
+    const bAdj = Math.abs(stk.basis) < 0.005 ? 0 : stk.basis;
+    metricsHtml += `<span class="stock-metric" title="Futures ${bAdj >= 0 ? 'premium' : 'discount'} vs spot (basis ${(bAdj >= 0 ? '+' : '') + bAdj.toFixed(2)}%)" style="color:${bAdj >= 0 ? 'var(--green)' : 'var(--red)'}">B${bAdj >= 0 ? '+' : ''}${bAdj.toFixed(2)}</span>`;
+  }
+
+  let ltpHtml = '';
+  let strikeHtml = '';
+
+  if (stk.ltp && stk.ltp > 0) {
+    ltpHtml = `<span class="stock-ltp">₹${fmtNum(stk.ltp)}</span>`;
+    const isBull = (secIsGain !== undefined) ? secIsGain : (stk.pchange >= 0);
+    const suffix = isBull ? 'CE' : 'PE';
+    const callPutName = isBull ? 'Call' : 'Put';
+    const step = getStrikeStep(stk.ltp);
+    const atm = Math.round(stk.ltp / step) * step;
+    const fmtS = (atm === Math.floor(atm) ? String(Math.floor(atm)) : atm.toFixed(1));
+    const sClass = isBull ? 'ce' : 'pe';
+    const expPart = defaultExpiry ? `${defaultExpiry} ` : '';
+    const sahiName = `${stk.symbol} ${expPart}${fmtS} ${callPutName}`.trim();
+    strikeHtml = `<span class="stock-strike ${sClass}" onclick="copySahiContract(this, '${sahiName}')" title="Click to copy for Sahi app: '${sahiName}'\nSpot: ₹${fmtNum(stk.ltp)}, Step: ${step}">${fmtS} ${suffix}</span>`;
+  }
+
   return `
     <div class="stock-row" data-symbol="${stk.symbol}">
       <span class="stock-symbol">${stk.symbol}</span>
       <span class="stock-pct">${pctText(stk.pchange)}</span>
+      ${ltpHtml}
+      ${strikeHtml}
       <div class="stock-badges">${badges}</div>
+      ${metricsHtml}
       <span class="stock-lot">${lotStr}</span>
     </div>`;
 }
@@ -2805,6 +3143,11 @@ function buildFuturesRow(rank, af, activeFutSet, optLiqMap, minOptVol) {
   if (isTopOpt) badge = `<span class="badge badge-opt">[*]</span>`;
   else if (isFnoOpt) badge = `<span class="badge badge-fno">[~]</span>`;
   const lotStr = af.lot_size ? `Lot: ${af.lot_size}` : '';
+  let basisHtml = '';
+  if (af.basis != null && isFinite(af.basis)) {
+    const bAdj = Math.abs(af.basis) < 0.005 ? 0 : af.basis;
+    basisHtml = `<span class="stock-metric" title="Futures ${bAdj >= 0 ? 'premium' : 'discount'} vs spot (basis ${(bAdj >= 0 ? '+' : '') + bAdj.toFixed(2)}%)" style="color:${bAdj >= 0 ? 'var(--green)' : 'var(--red)'}">B${bAdj >= 0 ? '+' : ''}${bAdj.toFixed(2)}</span>`;
+  }
   return `
     <div class="futures-row" data-symbol="${af.symbol}">
       <span class="futures-rank">${rank}.</span>
@@ -2812,6 +3155,7 @@ function buildFuturesRow(rank, af, activeFutSet, optLiqMap, minOptVol) {
       <span class="futures-pct">${pctText(af.pchange)}</span>
       <span class="futures-badge">${badge}</span>
       <div class="futures-right">
+        ${basisHtml}
         <span class="futures-vol">Vol: ${fmtVol(af.volume)}</span>
         <span class="futures-lot">${lotStr}</span>
       </div>
@@ -2833,12 +3177,12 @@ function buildOptionsRow(rank, opt, activeFutSet) {
 }
 
 /* sector block html */
-function buildSectorCol(sectors, sectorStocksMap, activeFutSet, optLiqMap, cfg) {
+function buildSectorCol(sectors, sectorStocksMap, activeFutSet, optLiqMap, cfg, defaultExpiry, sectorPickMap) {
   if (!sectors.length) return '<div class="empty-col">No data</div>';
   return sectors.map((sec, idx) => {
     const s_stocks = (sectorStocksMap[sec.name] || [])
       .filter(s => !cfg.maxLot || s.lot_size <= cfg.maxLot)
-      .filter(s => !cfg.maxPct || Math.abs(s.pchange) <= cfg.maxPct);
+      .filter(s => !cfg.maxPct || Math.abs(s.pchange) < cfg.maxPct);
 
     const ranked = s_stocks.sort((a, b) => {
       const tierA = stockTier(a.symbol, activeFutSet, optLiqMap, cfg.minOptVol);
@@ -2847,12 +3191,14 @@ function buildSectorCol(sectors, sectorStocksMap, activeFutSet, optLiqMap, cfg) 
       return (sec.isGain ? b.pchange - a.pchange : a.pchange - b.pchange);
     }).slice(0, cfg.stocksPerSector);
 
-    const stocksHtml = ranked.map(s => buildStockRow(s, activeFutSet, optLiqMap, cfg.minOptVol)).join('');
+    const stocksHtml = ranked.map(s => buildStockRow(s, activeFutSet, optLiqMap, cfg.minOptVol, sec.isGain, defaultExpiry)).join('');
+    const bestPick = sectorPickMap[sec.name];
     return `
       <div class="sector-block">
         <div class="sector-name-row">
           <span class="sector-rank">${idx + 1}.</span>
           <span class="sector-name">${sec.name.replace('NIFTY ','')}</span>
+          ${bestPick ? `<span class="sector-best-stock" title="Best scored candidate · Score ${bestPick.score.toFixed(2)}">${bestPick.symbol}</span>` : ''}
           ${pctBadge(sec.change)}
         </div>
         ${stocksHtml}
@@ -2870,242 +3216,548 @@ function stockTier(sym, activeFutSet, optLiqMap, minOptVol) {
 }
 
 /* ────────────────────────────────────────────
-   1-Trade Focus: Spotlight Selection & Card
+   Main render
    ──────────────────────────────────────────── */
-function findSpotlightCandidate(candidateSectors, sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfg, isLong, activeFutMap, stockSectorsMap) {
-  if (!candidateSectors || !candidateSectors.length) return null;
 
-  let bestCand = null;
-  let bestScore = -999999;
+/* ────────────────────────────────────────────
+   Best Stock Scoring & Selection (from best_stock.py)
+   ──────────────────────────────────────────── */
+function computeBestStock(db, scanId, niftyChange, maxLot, maxPct, visibleSymbols, minOptVol) {
+  let hasOHL = false;
+  try {
+    const colInfo = db.exec("PRAGMA table_info(stocks);");
+    const colNames = (colInfo[0]?.values || []).map(c => c[1]);
+    hasOHL = colNames.includes('open_price') && colNames.includes('day_high') && colNames.includes('day_low');
+  } catch (e) {}
 
-  for (let sIdx = 0; sIdx < candidateSectors.length; sIdx++) {
-    const sec = candidateSectors[sIdx];
-    const stocks = sectorStocksMap[sec.name] || [];
+  let q = hasOHL
+    ? `SELECT st.symbol, st.change_pct, st.lot_size, st.ltp,
+              st.open_price, st.day_high, st.day_low,
+              sec.sector_name, sec.change_pct AS sector_change
+       FROM stocks st
+       JOIN sectors sec ON st.sector_name = sec.sector_name AND sec.scan_id = st.scan_id
+       WHERE st.scan_id = ? AND st.lot_size IS NOT NULL AND st.is_fno = 1`
+    : `SELECT st.symbol, st.change_pct, st.lot_size, st.ltp,
+              0, 0, 0,
+              sec.sector_name, sec.change_pct AS sector_change
+       FROM stocks st
+       JOIN sectors sec ON st.sector_name = sec.sector_name AND sec.scan_id = st.scan_id
+       WHERE st.scan_id = ? AND st.lot_size IS NOT NULL AND st.is_fno = 1`;
 
-    for (const stk of stocks) {
-      // 1. Lot size filter
-      if (cfg.maxLot && stk.lot_size && stk.lot_size > cfg.maxLot) continue;
+  const params = [scanId];
+  if (maxLot && maxLot > 0) {
+    q += " AND st.lot_size <= ?";
+    params.push(maxLot);
+  }
+  // Same rule as the sector lists: a stock whose move has already reached the
+  // max_percentage threshold must not be named Top Pick either. Applied per
+  // scan, so a name that fades back under the threshold reappears next scan.
+  if (maxPct && maxPct > 0) {
+    q += " AND ABS(st.change_pct) < ?";
+    params.push(maxPct);
+  }
 
-      // 2. Max % Move filter
-      if (cfg.maxPct && Math.abs(stk.pchange) > cfg.maxPct) continue;
+  const stockRes = db.exec(q, params);
+  const rows = stockRes[0]?.values || [];
+  if (!rows.length) return null;
 
-      // 3. Direction filter (Stock change % must match trade direction)
-      if (isLong && stk.pchange <= 0) continue;
-      if (!isLong && stk.pchange >= 0) continue;
+  let ohlcDataReliable = false;
+  if (hasOHL) {
+    const qualityRows = db.exec(
+      "SELECT symbol, open_price, day_high, day_low FROM stocks WHERE scan_id = ?",
+      [scanId]
+    )[0]?.values || [];
+    ohlcDataReliable = isOhlcDataReliable(qualityRows.map(([symbol, openP, high, low]) => ({
+      symbol,
+      open_price: Number(openP) || 0,
+      day_high: Number(high) || 0,
+      day_low: Number(low) || 0
+    })));
+  }
 
-      // 4. Cross-Sector Confluence (SOFT — score penalty, not hard reject):
-      // A stock like SBIN belongs to PSU BANK (+0.69%) but also NIFTY BANK (-0.03%).
-      // The PRIMARY sector (where we found this stock = current candidateSector) is what matters.
-      // Secondary sectors going slightly opposite = penalty, not disqualification.
-      let crossSectorPenalty = 0;
-      if (stockSectorsMap && stockSectorsMap[stk.symbol]) {
-        const secList = stockSectorsMap[stk.symbol];
-        const opposingSecs = isLong
-          ? secList.filter(s => s.name !== sec.name && s.change < -0.1)  // only meaningfully negative
-          : secList.filter(s => s.name !== sec.name && s.change >  0.1); // only meaningfully positive
-        // Several NSE indices overlap heavily; count opposing membership once so
-        // duplicate index coverage does not multiply the penalty.
-        crossSectorPenalty = opposingSecs.length ? 25 : 0;
+  const stocks = {};
+  rows.forEach(([sym, chg, lot, ltp, openP, dHigh, dLow, secName, secChg]) => {
+    const s = sym.trim().toUpperCase();
+    if (!stocks[s]) {
+      stocks[s] = {
+        symbol: s,
+        change: parseFloat(chg) || 0,
+        lot: parseInt(lot) || 0,
+        ltp: parseFloat(ltp) || 0,
+        open_price: parseFloat(openP) || 0,
+        day_high: parseFloat(dHigh) || 0,
+        day_low: parseFloat(dLow) || 0,
+        sectors: []
+      };
+    }
+    stocks[s].sectors.push({
+      name: secName,
+      change: parseFloat(secChg) || 0
+    });
+  });
 
-        // HARD reject ONLY if the candidate sector itself is against the trade direction
-        // (safety net — shouldn't happen since we iterate topGainers/filteredLosers)
-        if (isLong  && sec.change <= 0) continue;
-        if (!isLong && sec.change >= 0) continue;
-      }
+  // Hard gate: only candidates that actually survive the on-screen filters
+  // (lot cap, max-% filter, top-N sectors, N rows per sector) are eligible.
+  // If you cannot see the row, it cannot be the Top Pick.
+  if (visibleSymbols) {
+    Object.keys(stocks).forEach(sym => { if (!visibleSymbols.has(sym)) delete stocks[sym]; });
+    if (!Object.keys(stocks).length) return null;
+  }
 
-      // 5. Option traded volume is a liquidity indicator, not directional flow.
-      const callVol = (callMap[stk.symbol]?.volume) || 0;
-      const putVol  = (putMap[stk.symbol]?.volume) || 0;
-      const optVol  = callVol + putVol;
-      const hasOptionData = Object.prototype.hasOwnProperty.call(callMap, stk.symbol) ||
-                            Object.prototype.hasOwnProperty.call(putMap, stk.symbol);
+  // Futures activity (volume per symbol)
+  const futMap = {};
+  try {
+    const futRes = db.exec(
+      "SELECT symbol, SUM(volume_contracts) FROM active_futures WHERE scan_id = ? GROUP BY symbol",
+      [scanId]
+    );
+    (futRes[0]?.values || []).forEach(([sym, vol]) => {
+      futMap[sym.trim().toUpperCase()] = parseInt(vol) || 0;
+    });
+  } catch(e) {}
 
-      // 6. Futures Confluence (SOFT threshold — ignore near-flat futures):
-      // SBIN futures at -0.04% is near-flat and should NOT block a Long trade.
-      // Only hard-reject if futures show a MEANINGFUL move against the direction.
-      const futData = activeFutMap ? activeFutMap[stk.symbol] : null;
-      let futPenalty = 0;
-      if (futData) {
-        const FUT_THRESHOLD = 0.3; // ignore moves within ±0.3%
-        if (isLong  && futData.pchange < -FUT_THRESHOLD) continue; // Futures clearly in red → no Long
-        if (!isLong && futData.pchange >  FUT_THRESHOLD) continue; // Futures clearly in green → no Short
-        // Near-flat or slightly against → apply a score penalty instead
-        if (isLong  && futData.pchange < 0) futPenalty = 30;
-        if (!isLong && futData.pchange > 0) futPenalty = 30;
-      }
+  // Options activity
+  const optMap = {};
+  try {
+    const optRes = db.exec(
+      `SELECT symbol, option_type, SUM(volume_contracts), SUM(strikes_count)
+       FROM active_options WHERE scan_id = ? GROUP BY symbol, option_type`,
+      [scanId]
+    );
+    (optRes[0]?.values || []).forEach(([sym, otype, vol, strikes]) => {
+      const s = sym.trim().toUpperCase();
+      const t = (otype || '').trim().toLowerCase() === 'put' ? 'Put' : 'Call';
+      const v = parseInt(vol) || 0;
+      const k = parseInt(strikes) || 1;
+      if (!optMap[s]) optMap[s] = { Call: 0, Put: 0, call_strikes: 0, put_strikes: 0 };
+      optMap[s][t] += v;
+      if (t === 'Call') optMap[s].call_strikes += k;
+      else optMap[s].put_strikes += k;
+    });
+  } catch(e) {}
 
-      // 7. Directional Tier
-      const hasFut = activeFutSet.has(stk.symbol);
-      const hasOpt = optVol >= cfg.minOptVol;
-      let tier = 0;
-      if (hasFut && hasOpt) tier = 3;
-      else if (hasFut) tier = 2;
-      else if (hasOpt) tier = 1;
+  // Option-liquidity gate: the pick must clear the same MIN OPTION VOL ([*])
+  // threshold that the screen uses. No option volume -> not tradable -> not pickable.
+  if (minOptVol && minOptVol > 0) {
+    Object.keys(stocks).forEach(sym => {
+      const o = optMap[sym];
+      const vol = o ? (o.Call || 0) + (o.Put || 0) : 0;
+      if (vol < minOptVol) delete stocks[sym];
+    });
+    if (!Object.keys(stocks).length) return null;
+  }
 
-      // Scoring formula:
-      // Sector rank weight: Sector 1 (+100), Sector 2 (+70), Sector 3 (+50), etc.
-      const secWeight = Math.max(10, 100 - (sIdx * 30));
-      // Tier 3 (Fut + Opt) gets +200 bonus, Tier 1 (Opt) gets +120 bonus
-      const tierWeight = tier === 3 ? 200 : (tier === 1 ? 120 : (tier === 2 ? 100 : 0));
-      // Momentum weight
-      const moveWeight = Math.abs(stk.pchange) * 15;
-
-      // 8. Open Condition Bonus (Open ≈ Low or Open ≈ High)
-      const cond = checkOpenCondition(stk);
-      const olBonus = (isLong && cond.isOL) ? 80 : ((!isLong && cond.isOH) ? 80 : 0);
-
-      const score = secWeight + tierWeight + moveWeight + olBonus - crossSectorPenalty - futPenalty;
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestCand = {
-          symbol: stk.symbol,
-          ltp: stk.ltp,
-          pchange: stk.pchange,
-          lot_size: stk.lot_size,
-          open_price: stk.open_price,
-          day_high: stk.day_high,
-          day_low: stk.day_low,
-          openCond: cond,
-          sectorName: sec.name,
-          sectorChange: sec.change,
-          sectorRank: sIdx + 1,
-          tier,
-          hasFut,
-          hasOpt,
-          optVol,
-          hasOptionData,
-          callVol,
-          putVol,
-          futPchange: futData ? futData.pchange : null,
-          isLong,
-          score,
-          isFallback: false
-        };
-      }
+  function pickBestSector(sectors, stockChange) {
+    if (!sectors || !sectors.length) return { name: '—', change: 0 };
+    if (stockChange >= 0) {
+      return sectors.reduce((best, s) => s.change > best.change ? s : best, sectors[0]);
+    } else {
+      return sectors.reduce((best, s) => s.change < best.change ? s : best, sectors[0]);
     }
   }
 
-  return bestCand;
+  function computeOhlcSignal(openP, dHigh, dLow, ltp) {
+    if (!openP || !dHigh || !dLow || !ltp) return 0;
+    const dayRange = dHigh - dLow;
+    if (dayRange <= 0.01) return 0;
+    const tol = dayRange * 0.03;
+    if (Math.abs(openP - dLow) <= tol) return 1.0;
+    if (Math.abs(openP - dHigh) <= tol) return -1.0;
+    return 0;
+  }
+
+  function getStrikeStep(ltp) {
+    if (ltp <= 50) return 1.0;
+    if (ltp <= 100) return 2.5;
+    if (ltp <= 250) return 5.0;
+    if (ltp <= 500) return 10.0;
+    if (ltp <= 1000) return ltp > 700 ? 20.0 : 10.0;
+    if (ltp <= 2500) return ltp > 1800 ? 50.0 : 20.0;
+    if (ltp <= 5000) return ltp > 3500 ? 100.0 : 50.0;
+    if (ltp <= 10000) return 100.0;
+    return ltp > 20000 ? 200.0 : 100.0;
+  }
+
+  function recommendStrike(sym, ltp, direction, activeStrikesMap, defaultExpiry) {
+    const isBull = (direction || '').toUpperCase() === 'BULLISH';
+    const suffix = isBull ? 'CE' : 'PE';
+    const otype = isBull ? 'call' : 'put';
+    const callPutName = isBull ? 'Call' : 'Put';
+    const step = getStrikeStep(ltp);
+    const atm = Math.round(ltp / step) * step;
+    const otm = isBull ? (atm + step) : (atm - step);
+    const itm = isBull ? (atm - step) : (atm + step);
+
+    const fmtS = s => (s === Math.floor(s) ? String(Math.floor(s)) : s.toFixed(1));
+
+    const key = `${sym}_${otype}`;
+    const act = activeStrikesMap ? activeStrikesMap[key] : null;
+
+    const rawExp = (act && act.expiry) ? act.expiry : defaultExpiry;
+    const expFormatted = formatExpiryForBroker(rawExp);
+    const expPart = expFormatted ? `${expFormatted} ` : '';
+
+    const sahiAtm = `${sym} ${expPart}${fmtS(atm)} ${callPutName}`.replace(/\s+/g, ' ').trim();
+    const sahiOtm = `${sym} ${expPart}${fmtS(otm)} ${callPutName}`.replace(/\s+/g, ' ').trim();
+    const sahiItm = `${sym} ${expPart}${fmtS(itm)} ${callPutName}`.replace(/\s+/g, ' ').trim();
+
+    let sahiActive = null;
+    if (act && act.strike) {
+      const actExp = formatExpiryForBroker(act.expiry || defaultExpiry);
+      const actPart = actExp ? `${actExp} ` : '';
+      sahiActive = `${sym} ${actPart}${fmtS(act.strike)} ${callPutName}`.replace(/\s+/g, ' ').trim();
+    }
+
+    return {
+      suffix,
+      callPutName,
+      action: `BUY ${callPutName}`,
+      step,
+      atm: fmtS(atm),
+      otm: fmtS(otm),
+      itm: fmtS(itm),
+      atmStr: `${fmtS(atm)} ${suffix}`,
+      otmStr: `${fmtS(otm)} ${suffix}`,
+      itmStr: `${fmtS(itm)} ${suffix}`,
+      sahiAtm,
+      sahiOtm,
+      sahiItm,
+      sahiActive,
+      active: act
+    };
+  }
+
+  // Fetch active strike details from active_options if columns exist
+  const activeStrikesMap = {};
+  try {
+    const colInfo = db.exec("PRAGMA table_info(active_options);");
+    const colNames = (colInfo[0]?.values || []).map(c => c[1]);
+    if (colNames.includes('strike_price')) {
+      const res = db.exec(`
+        SELECT symbol, option_type, strike_price, option_ltp, volume_contracts, open_interest, expiry_date
+        FROM active_options
+        WHERE scan_id = ? AND strike_price IS NOT NULL
+        ORDER BY volume_contracts DESC
+      `, [scanId]);
+      (res[0]?.values || []).forEach(([sym, otype, strike, ltp, vol, oi, expiry]) => {
+        const key = `${sym.trim().toUpperCase()}_${(otype||'').trim().toLowerCase()}`;
+        if (!activeStrikesMap[key]) {
+          activeStrikesMap[key] = {
+            strike: parseFloat(strike),
+            ltp: parseFloat(ltp) || null,
+            vol: parseInt(vol) || 0,
+            oi: parseInt(oi) || 0,
+            expiry: expiry || ''
+          };
+        }
+      });
+    }
+  } catch(e) {}
+
+  // Normalization pass
+  let maxChange = 1, maxSec = 1, maxFut = 1, maxOpt = 1;
+  const stockList = Object.values(stocks);
+
+  stockList.forEach(stk => {
+    if (Math.abs(stk.change) > maxChange) maxChange = Math.abs(stk.change);
+    stk.sectors.forEach(sec => {
+      if (Math.abs(sec.change) > maxSec) maxSec = Math.abs(sec.change);
+    });
+    const fv = futMap[stk.symbol] || 0;
+    if (fv > maxFut) maxFut = fv;
+    const op = optMap[stk.symbol] || { Call: 0, Put: 0 };
+    const totOpt = op.Call + op.Put;
+    if (totOpt > maxOpt) maxOpt = totOpt;
+  });
+
+  const w = (unifiedConfig && unifiedConfig.weights) ? unifiedConfig.weights : {};
+  const W_PRICE   = w.price   !== undefined ? parseFloat(w.price)   : 3.0;
+  const W_SECTOR  = w.sector  !== undefined ? parseFloat(w.sector)  : 2.0;
+  const W_OPTIONS = w.options !== undefined ? parseFloat(w.options) : 2.0;
+  const W_FUTURES = w.futures !== undefined ? parseFloat(w.futures) : 1.5;
+  const W_OHL     = w.ohlc    !== undefined ? parseFloat(w.ohlc)    : 1.0;
+  const W_BREADTH = w.breadth !== undefined ? parseFloat(w.breadth) : 1.0;
+  const EXT_START = (unifiedConfig && unifiedConfig.ext_penalty_start !== undefined) ? parseFloat(unifiedConfig.ext_penalty_start) : 0.02;
+  const EXT_END   = (unifiedConfig && unifiedConfig.ext_penalty_end   !== undefined) ? parseFloat(unifiedConfig.ext_penalty_end)   : 0.08;
+
+  // Backtest-validated additions (rank_backtest.py):
+  // chase penalty — 1.0 until +EXT_START above the open, linear to 0 at +EXT_END (upside-only)
+  function extensionFactor(ext) {
+    if (ext === null || ext === undefined || isNaN(ext)) return 1.0;
+    const over = ext - EXT_START;
+    if (over <= 0) return 1.0;
+    return Math.max(0.0, 1.0 - over / (EXT_END - EXT_START));
+  }
+  function breadthOf(secName, change) {
+    const syms = sectorSyms[secName];
+    if (!syms || !syms.size) return 0.0;
+    let same = 0;
+    syms.forEach(s2 => { if ((stocks[s2].change >= 0) === (change >= 0)) same++; });
+    return same / syms.size;
+  }
+
+  // Sector constituents (deduped) for the breadth term
+  const sectorSyms = {};
+  stockList.forEach(stk => {
+    stk.sectors.forEach(sec => {
+      (sectorSyms[sec.name] = sectorSyms[sec.name] || new Set()).add(stk.symbol);
+    });
+  });
+
+  const bullish = [];
+  const bearish = [];
+  const sectorBest = {};
+
+  stockList.forEach(stk => {
+    const sym = stk.symbol;
+    const change = stk.change;
+    const isBullish = change > 0;
+    const bs = pickBestSector(stk.sectors, change);
+    const secChg = bs.change;
+
+    const futVol = futMap[sym] || 0;
+    const opt = optMap[sym] || { Call: 0, Put: 0, call_strikes: 0, put_strikes: 0 };
+    const totalOpt = opt.Call + opt.Put;
+    const ohlcSig = ohlcDataReliable
+      ? computeOhlcSignal(stk.open_price, stk.day_high, stk.day_low, stk.ltp)
+      : 0;
+
+    const priceScore = Math.abs(change) / maxChange;
+
+    let sectorScore = 0.0;
+    if ((change >= 0 && secChg >= 0) || (change < 0 && secChg < 0)) {
+      sectorScore = Math.abs(secChg) / maxSec;
+    }
+
+    let optScore = 0.0;
+    if (totalOpt > 0) {
+      if (isBullish) {
+        optScore = (opt.Call / totalOpt) * (totalOpt / maxOpt);
+      } else {
+        optScore = (opt.Put / totalOpt) * (totalOpt / maxOpt);
+      }
+    }
+
+    const futScore = futVol > 0 ? (futVol / maxFut) : 0.0;
+    const ohlcScore = isBullish ? Math.max(0, ohlcSig) : Math.max(0, -ohlcSig);
+
+    // Backtest-validated terms
+    const breadth = breadthOf(bs.name, change);                      // sector agreement
+    const ext = (stk.open_price && stk.ltp) ? (stk.ltp - stk.open_price) / stk.open_price : null;
+    const extFactor = extensionFactor(ext);                          // chase penalty
+
+    const baseScore = (
+      W_PRICE   * priceScore +
+      W_SECTOR  * sectorScore +
+      W_OPTIONS * optScore +
+      W_FUTURES * futScore +
+      W_OHL     * ohlcScore
+    );
+    const totalScore = (baseScore + W_BREADTH * breadth) * extFactor;
+
+    const candidate = {
+      symbol: sym,
+      change: change,
+      ltp: stk.ltp,
+      lot: stk.lot,
+      sector: bs.name,
+      sector_change: secChg,
+      fut_vol: futVol,
+      call_vol: opt.Call,
+      put_vol: opt.Put,
+      call_strikes: opt.call_strikes,
+      put_strikes: opt.put_strikes,
+      ohlc_signal: ohlcSig,
+      breadth: parseFloat(breadth.toFixed(2)),
+      ext: ext,
+      ext_factor: parseFloat(extFactor.toFixed(2)),
+      score: parseFloat(totalScore.toFixed(2)),
+      breakdown: {
+        price: parseFloat(priceScore.toFixed(2)),
+        sector: parseFloat(sectorScore.toFixed(2)),
+        options: parseFloat(optScore.toFixed(2)),
+        futures: parseFloat(futScore.toFixed(2)),
+        ohlc: parseFloat(ohlcScore.toFixed(2)),
+        breadth: parseFloat(breadth.toFixed(2)),
+        ext_factor: parseFloat(extFactor.toFixed(2))
+      }
+    };
+
+    if (isBullish) bullish.push(candidate);
+    else bearish.push(candidate);
+
+    // Score the same stock against each constituent sector so every sector
+    // can show its own highest-scoring candidate.
+    stk.sectors.forEach(sec => {
+      const aligned = (change >= 0 && sec.change >= 0) || (change < 0 && sec.change < 0);
+      const secScore = aligned ? Math.abs(sec.change) / maxSec : 0;
+      const secBreadth = breadthOf(sec.name, change);
+      const secScoreTotal = (W_PRICE * priceScore + W_SECTOR * secScore + W_OPTIONS * optScore
+        + W_FUTURES * futScore + W_OHL * ohlcScore + W_BREADTH * secBreadth) * extFactor;
+      const sectorCandidate = {
+        ...candidate,
+        sector: sec.name,
+        sector_change: sec.change,
+        score: parseFloat(secScoreTotal.toFixed(2)),
+        breakdown: { ...candidate.breakdown, sector: parseFloat(secScore.toFixed(2)), breadth: parseFloat(secBreadth.toFixed(2)) }
+      };
+      if (!sectorBest[sec.name] || sectorCandidate.score > sectorBest[sec.name].score) {
+        sectorBest[sec.name] = sectorCandidate;
+      }
+    });
+  });
+
+  bullish.sort((a, b) => b.score - a.score);
+  bearish.sort((a, b) => b.score - a.score);
+
+  let defaultExpiry = '';
+  try {
+    const expRes = db.exec(`SELECT expiry_date FROM active_options WHERE scan_id = ? AND expiry_date IS NOT NULL AND expiry_date != '' LIMIT 1`, [scanId]);
+    defaultExpiry = expRes[0]?.values[0]?.[0] || '';
+    if (!defaultExpiry) {
+      const futExpRes = db.exec(`SELECT expiry_date FROM active_futures WHERE scan_id = ? AND expiry_date IS NOT NULL AND expiry_date != '' LIMIT 1`, [scanId]);
+      defaultExpiry = futExpRes[0]?.values[0]?.[0] || '';
+    }
+  } catch(e) {}
+
+  const niftyUp = niftyChange >= 0;
+  const primaryList = niftyUp ? bullish : bearish;
+  const best = primaryList.length > 0 ? primaryList[0] : null;
+  const bestDir = niftyUp ? 'BULLISH' : 'BEARISH';
+  const strikeRec = best ? recommendStrike(best.symbol, best.ltp, bestDir, activeStrikesMap, defaultExpiry) : null;
+
+  return {
+    best,
+    bestDir,
+    strikeRec,
+    bullishTop: bullish.slice(0, 3),
+    bearishTop: bearish.slice(0, 3),
+    sectorPicks: Object.entries(sectorBest)
+      .map(([sector, candidate]) => ({ ...candidate, sector }))
+      .sort((a, b) => a.sector.localeCompare(b.sector))
+  };
 }
 
-function buildSpotlightCard(cand, isLong, cfg, isPreMarket, scanTime, niftyChange) {
-  if (!cand) {
-    const dirTxt = isLong ? 'Long' : 'Short';
-    return `
-      <div class="spotlight-empty">
-        ⚠️ No eligible <strong>${dirTxt}</strong> candidate found in the displayed sectors.<br>
-        <span style="font-size:.70rem;color:var(--text3);margin-top:4px;display:inline-block;">
-          Adjust lot-size or max-move filters to broaden the candidate set.
-        </span>
-      </div>`;
+function renderTopPick(bestStockInfo) {
+  const widget = document.getElementById('top-pick-widget');
+  if (!widget) return;
+  if (!bestStockInfo || !bestStockInfo.best) {
+    widget.style.display = 'none';
+    return;
+  }
+  const b = bestStockInfo.best;
+  const isPos = b.change >= 0;
+  const dirClass = isPos ? 'pos' : 'neg';
+
+  const box = document.getElementById('top-pick-box');
+  if (box) box.className = 'top-pick-box ' + dirClass;
+
+  const dirTag = document.getElementById('top-pick-dir-tag');
+  if (dirTag) {
+    dirTag.textContent = bestStockInfo.bestDir;
+    dirTag.className = 'top-pick-dir-tag ' + dirClass;
   }
 
-  const actionText = isLong ? 'LONG CANDIDATE' : 'SHORT CANDIDATE';
-  const secName = cand.sectorName ? cand.sectorName.replace('NIFTY ', '') : '—';
-  
-  let badgesHtml = '';
-  if (cand.hasFut) badgesHtml += '<span class="badge badge-fut">+FUT</span> ';
-  if (cand.hasOpt) {
-    badgesHtml += '<span class="badge badge-opt">[*] OPTIONS</span>';
-  } else if (cand.optVol > 0) {
-    badgesHtml += '<span class="badge badge-fno">[~] OPTIONS</span>';
-  } else if (cand.hasFut) {
-    badgesHtml += `<span class="badge badge-fno">Futures Only</span>`;
-  } else {
-    badgesHtml += '<span class="badge badge-fno">Not in options feed</span>';
+  const symEl = document.getElementById('top-pick-symbol');
+  if (symEl) {
+    symEl.textContent = b.symbol;
+    symEl.onclick = () => {
+      const searchBox = document.getElementById('stock-search');
+      if (searchBox) {
+        searchBox.value = b.symbol;
+        onStockSearch(b.symbol);
+      }
+    };
   }
 
-  const cond = cand.openCond || checkOpenCondition(cand);
-  let olBadge = '';
-  if (cond.isOL) {
-    olBadge = `<span class="spotlight-action-badge pos" style="box-shadow:0 0 8px rgba(16,185,129,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | Low: ₹${fmtNum(cand.day_low)}">OPEN NEAR LOW (${cond.wickPct}%)</span>`;
-  } else if (cond.isOH) {
-    olBadge = `<span class="spotlight-action-badge neg" style="box-shadow:0 0 8px rgba(239,68,68,0.35);" title="Open: ₹${fmtNum(cand.open_price)} | High: ₹${fmtNum(cand.day_high)}">OPEN NEAR HIGH (${cond.wickPct}%)</span>`;
+  const chgEl = document.getElementById('top-pick-change');
+  if (chgEl) {
+    chgEl.textContent = fmtPct(b.change);
+    chgEl.className = 'top-pick-change ' + dirClass;
   }
 
-  let preMarketBadge = '';
-  if (isPreMarket) {
-    preMarketBadge = `<span class="badge" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow);" title="Scan run at ${scanTime} (before 9:15 AM cash open). Indicative pre-open match.">⚠️ Pre-Market (${scanTime})</span>`;
+  const ltpEl = document.getElementById('top-pick-ltp');
+  if (ltpEl) ltpEl.textContent = `₹${fmtNum(b.ltp)}`;
+
+  const lotEl = document.getElementById('top-pick-lot');
+  if (lotEl) lotEl.textContent = `Lot: ${b.lot}`;
+
+  const secEl = document.getElementById('top-pick-sector');
+  if (secEl) secEl.textContent = `${b.sector} (${fmtPct(b.sector_change)})`;
+
+  const scoreEl = document.getElementById('top-pick-score');
+  if (scoreEl) {
+    scoreEl.textContent = `Score: ${b.score.toFixed(2)}`;
+    const bd = b.breakdown;
+    scoreEl.title = `Composite Score: ${b.score.toFixed(2)}\n` +
+      `─────────────────────────\n` +
+      `• Price Momentum : ${bd.price.toFixed(2)} (wt 3.0)\n` +
+      `• Sector Alignment: ${bd.sector.toFixed(2)} (wt 2.0)\n` +
+      `• Options Flow   : ${bd.options.toFixed(2)} (wt 2.0)\n` +
+      `• Futures Volume : ${bd.futures.toFixed(2)} (wt 1.5)\n` +
+      `• OHLC Signal    : ${bd.ohlc.toFixed(2)} (wt 1.0)\n` +
+      `• Sector Breadth : ${bd.breadth.toFixed(2)} (wt 1.0)\n` +
+      `• Chase Multiplier: ${bd.ext_factor.toFixed(2)}×\n` +
+      `─────────────────────────\n` +
+      `Options : Call ${fmtVol(b.call_vol)} | Put ${fmtVol(b.put_vol)}\n` +
+      `Futures : ${fmtVol(b.fut_vol)} contracts\n` +
+      `Click symbol to filter below`;
   }
 
-  const marketContext = niftyChange > 0
-    ? (isLong ? 'Aligned with NIFTY' : 'Against NIFTY')
-    : niftyChange < 0
-      ? (isLong ? 'Against NIFTY' : 'Aligned with NIFTY')
-      : 'NIFTY flat';
+  const badgesEl = document.getElementById('top-pick-badges');
+  if (badgesEl) {
+    let bHtml = '';
+    if (b.fut_vol > 0) bHtml += `<span class="badge badge-fut" title="Active Futures">+FUT</span>`;
+    if (b.call_vol > 0 || b.put_vol > 0) bHtml += `<span class="badge badge-opt" title="Active Options">[*]</span>`;
+    if (b.ohlc_signal > 0) bHtml += `<span class="badge badge-ol" title="Open ≈ Low (Bullish)">🔥 O=L</span>`;
+    else if (b.ohlc_signal < 0) bHtml += `<span class="badge badge-oh" title="Open ≈ High (Bearish)">❄️ O=H</span>`;
+    if (b.ext !== null && b.ext !== undefined && b.ext > (unifiedConfig.ext_penalty_start || 0.02) && b.change > 0) {
+      bHtml += `<span class="badge badge-ext" title="Extended +${(b.ext * 100).toFixed(1)}% from open — chase risk, score scaled to ${b.ext_factor}×">⚠ EXT +${(b.ext * 100).toFixed(1)}%</span>`;
+    }
+    badgesEl.innerHTML = bHtml;
+  }
 
-  return `
-    <div class="spotlight-card ${isLong ? 'spotlight-long' : 'spotlight-short'}">
-      <div class="spotlight-header">
-        <div class="spotlight-sym-box">
-          <span class="spotlight-sym">${cand.symbol}</span>
-          <span class="spotlight-action-badge ${isLong ? 'pos' : 'neg'}">
-            ⚡ ${actionText}
-          </span>
-          ${olBadge}
-          ${preMarketBadge}
-        </div>
-        <div class="spotlight-price-box">
-          <span class="spotlight-ltp">₹${fmtNum(cand.ltp)}</span>
-          <span class="spotlight-pct ${cand.pchange >= 0 ? 'pos' : 'neg'}">${fmtPct(cand.pchange)}</span>
-        </div>
-      </div>
+  const rec = bestStockInfo.strikeRec;
+  const strikeEl = document.getElementById('top-pick-strike');
+  if (strikeEl && rec) {
+    const copyTarget = rec.sahiAtm;
+    let label = `🎯 Strike: ${copyTarget} (ATM)`;
+    if (rec.active && rec.active.strike && rec.active.ltp) {
+      const actContract = rec.sahiActive || rec.sahiAtm;
+      label = `🎯 Strike: ${actContract} @ ₹${fmtNum(rec.active.ltp)}`;
+    }
+    strikeEl.textContent = label;
+    strikeEl.style.cursor = 'pointer';
+    strikeEl.onclick = () => {
+      copySahiContract(strikeEl, copyTarget);
+    };
 
-      <div class="spotlight-details">
-        <div class="spotlight-metric">
-          <span class="metric-label">Sector Move</span>
-          <span class="metric-val">${secName} <strong>${fmtPct(cand.sectorChange)}</strong></span>
-        </div>
-        <div class="spotlight-metric">
-          <span class="metric-label">Lot Size</span>
-          <span class="metric-val">${cand.lot_size ? cand.lot_size : '—'}</span>
-        </div>
-        <div class="spotlight-metric">
-          <span class="metric-label">Candle Structure</span>
-          <span class="metric-val">
-            ${cond.isOL ? '<strong style="color:var(--green)">Near low (' + cond.wickPct + '%)</strong>' : (cond.isOH ? '<strong style="color:var(--red)">Near high (' + cond.wickPct + '%)</strong>' : (cand.open_price ? 'Open: ₹' + fmtNum(cand.open_price) : '—'))}
-          </span>
-        </div>
-        <div class="spotlight-metric">
-          <span class="metric-label">Options Traded Volume</span>
-          <span class="metric-val">
-            ${cand.hasOptionData ? `Calls: <strong>${fmtVol(cand.callVol)}</strong> (Puts: ${fmtVol(cand.putVol)})` : 'Not listed in active options data'}
-          </span>
-        </div>
-        <div class="spotlight-metric">
-          <span class="metric-label">NIFTY Context</span>
-          <span class="metric-val">${marketContext} <strong>${fmtPct(niftyChange)}</strong></span>
-        </div>
-        <div class="spotlight-metric">
-          <span class="metric-label">Rule Score</span>
-          <span class="metric-val"><strong>${cand.score.toFixed(1)}</strong> (heuristic)</span>
-        </div>
-        <div class="spotlight-metric">
-          <span class="metric-label">F&amp;O Activity</span>
-          <span class="metric-val">
-            ${badgesHtml} ${cand.futPchange !== null ? `(Fut: <strong>${fmtPct(cand.futPchange)}</strong>)` : ''}
-          </span>
-        </div>
-      </div>
+    let tip = `🎯 STRIKE RECOMMENDATION FOR SAHI APP (Click to Copy):\n` +
+      `─────────────────────────\n` +
+      `👉 Click to copy: "${copyTarget}"\n` +
+      `─────────────────────────\n` +
+      `• Action       : ${rec.action} (${bestStockInfo.bestDir} Trade)\n` +
+      `• ATM Contract : ${rec.sahiAtm}  (Spot: ₹${fmtNum(b.ltp)})\n` +
+      `• OTM Contract : ${rec.sahiOtm}  (Lower premium / High momentum)\n` +
+      `• ITM Contract : ${rec.sahiItm}  (Higher delta / Conservative)\n`;
 
-      <div class="spotlight-summary-bar ${isLong ? 'pos-bar' : 'neg-bar'}">
-        🎯 <strong>Ranked candidate:</strong> <strong>${secName}</strong> sector (Rank #${cand.sectorRank}).
-        ${cand.hasFut && cand.hasOpt
-          ? 'Present in active futures and options data.'
-          : cand.hasOpt
-            ? 'Options traded volume meets the configured threshold.'
-            : cand.hasFut
-              ? 'Present in the active futures data.'
-              : 'Selected by sector rank, price change, and candle rules.'}
-        Options volume does not show whether trades were buys or sells.
-      </div>
-    </div>`;
+    if (rec.active) {
+      const a = rec.active;
+      tip += `• NSE Active   : ${rec.sahiActive || (a.strike + ' ' + rec.suffix)}` +
+        (a.ltp ? ` @ ₹${fmtNum(a.ltp)}` : '') +
+        (a.vol ? ` | Vol: ${fmtVol(a.vol)}` : '') +
+        (a.oi ? ` | OI: ${fmtVol(a.oi)}` : '') +
+        (a.expiry ? ` | Exp: ${a.expiry}` : '') + `\n`;
+    }
+    tip += `─────────────────────────\n` +
+      `Click badge to copy "${copyTarget}" directly to clipboard for Sahi app watchlist`;
+
+    strikeEl.title = tip;
+  }
+
+  widget.style.display = 'flex';
 }
 
-/* ────────────────────────────────────────────
-   Main render
-   ──────────────────────────────────────────── */
 function rerender() {
   if (!db || !currentScanId) return;
 
@@ -3119,7 +3771,17 @@ function rerender() {
     maxPct:           cfg('cfg-maxpct')    || 0,
   };
 
-  /* ── 1. Nifty ── */
+  /* ── 1. Nifty & Scan Metadata ── */
+  const scanRow = db.exec('SELECT * FROM scans WHERE scan_id = ?', [scanId]);
+  const sr = scanRow[0]?.values[0] || [];
+  let durSec = null;
+  if (scanRow.length && scanRow[0].columns) {
+    const durIdx = scanRow[0].columns.indexOf('duration_seconds');
+    if (durIdx !== -1 && sr[durIdx] != null) {
+      durSec = parseFloat(sr[durIdx]);
+    }
+  }
+
   const niftyRows = db.exec('SELECT * FROM nifty WHERE scan_id = ?', [scanId]);
   let niftyLtp = 0, niftyChange = 0, niftyDir = 'POSITIVE';
   if (niftyRows.length && niftyRows[0].values.length) {
@@ -3128,7 +3790,9 @@ function rerender() {
     niftyChange = parseFloat(chg) || 0;
     niftyDir    = (dir || (niftyChange >= 0 ? 'POSITIVE' : 'NEGATIVE')).toUpperCase();
   }
-  renderNiftyStrip(niftyLtp, niftyChange, niftyDir, scanId);
+  renderNiftyStrip(niftyLtp, niftyChange, niftyDir, scanId, durSec);
+
+  /* ── 1b. Top Pick is computed after the on-screen rows are known (step 7b) ── */
 
   /* ── 2. Sectors ── */
   const secRows = db.exec(`
@@ -3170,51 +3834,54 @@ function rerender() {
     const s = sym.trim().toUpperCase();
     if (lot) lotSizes[s] = parseInt(lot);
     if (!sectorStocksMap[sec]) sectorStocksMap[sec] = [];
+    const ltpF = parseFloat(ltp) || 0;
+    const dLowF = parseFloat(dLow) || 0;
     sectorStocksMap[sec].push({
       symbol: s,
-      ltp: parseFloat(ltp) || 0,
+      ltp: ltpF,
       pchange: parseFloat(chg) || 0,
       lot_size: lot ? parseInt(lot) : null,
       open_price: parseFloat(openP) || 0,
       day_high: parseFloat(dHigh) || 0,
-      day_low: parseFloat(dLow) || 0
+      day_low: dLowF,
+      ext_low: (ltpF > 0 && dLowF > 0) ? (ltpF - dLowF) / dLowF * 100 : null
     });
   });
 
   /* ── 4. Active Futures ── */
   const afRows = db.exec(`
-    SELECT symbol, change_pct, ltp, volume_contracts, lot_size
+    SELECT symbol, change_pct, ltp, volume_contracts, lot_size, underlying_value
     FROM active_futures
     WHERE scan_id = ? AND instrument = 'Stock Futures'
     ORDER BY volume_contracts DESC
   `, [scanId]);
 
+  const ohlcDataReliable = isOhlcDataReliable(Object.values(sectorStocksMap).flat());
+  Object.values(sectorStocksMap).flat().forEach(stk => {
+    stk.ohlc_data_reliable = ohlcDataReliable;
+  });
+
   const seen = new Set();
   const stockFutures = [];
   const activeFutSet = new Set();
-  const activeFutMap = {};
-  (afRows[0]?.values || []).forEach(([sym, chg, ltp, vol, lot]) => {
+  const futBasisMap = {};   // symbol -> futures premium(+)/discount(-) vs spot, %
+  (afRows[0]?.values || []).forEach(([sym, chg, ltp, vol, lot, und]) => {
     const s = sym.trim().toUpperCase();
     activeFutSet.add(s);
-    if (!activeFutMap[s]) {
-      activeFutMap[s] = { pchange: parseFloat(chg)||0, ltp: parseFloat(ltp)||0, volume: parseInt(vol)||0 };
-    }
+    const fLtp = parseFloat(ltp) || 0;
+    const undV = parseFloat(und) || 0;
+    if (fLtp > 0 && undV > 0 && !(s in futBasisMap)) futBasisMap[s] = (fLtp - undV) / undV * 100;
     if (seen.has(s)) return;
     seen.add(s);
     const lotVal = lot ? parseInt(lot) : (lotSizes[s] || null);
     if (lotVal) lotSizes[s] = lotVal;
     if (cfgObj.maxLot && lotVal && lotVal > cfgObj.maxLot) return;
-    stockFutures.push({ symbol: s, pchange: parseFloat(chg)||0, ltp: parseFloat(ltp)||0, volume: parseInt(vol)||0, lot_size: lotVal });
+    stockFutures.push({ symbol: s, pchange: parseFloat(chg)||0, ltp: fLtp, volume: parseInt(vol)||0, lot_size: lotVal, basis: (s in futBasisMap) ? futBasisMap[s] : null });
   });
 
-  const stockSectorsMap = {};
-  Object.entries(sectorStocksMap).forEach(([sName, sList]) => {
-    const secObj = allSectors.find(s => s.name === sName);
-    const sChange = secObj ? secObj.change : 0;
-    sList.forEach(stk => {
-      if (!stockSectorsMap[stk.symbol]) stockSectorsMap[stk.symbol] = [];
-      stockSectorsMap[stk.symbol].push({ name: sName, change: sChange });
-    });
+  // Attach futures basis to sector stock rows for the B metric chip
+  Object.values(sectorStocksMap).flat().forEach(stk => {
+    stk.basis = (stk.symbol in futBasisMap) ? futBasisMap[stk.symbol] : null;
   });
 
   const topFutGainers = [...stockFutures].sort((a,b) => b.pchange - a.pchange).slice(0, cfgObj.futuresCount);
@@ -3270,21 +3937,6 @@ function rerender() {
   const leftOptions    = isPos ? topCalls      : topPuts;
   const rightOptions   = isPos ? topPuts       : topCalls;
 
-  /* ── 6b. 1-Trade Spotlight Candidates ── */
-  const scanRow = db.exec('SELECT * FROM scans WHERE scan_id = ?', [scanId]);
-  const sr = scanRow[0]?.values[0] || [];
-  const scanTime = sr[2] || '';
-  const isPreMarket = scanTime && scanTime < '09:15:00';
-
-  // Strictly evaluate candidates from the top sectors displayed (topGainers and filteredLosers)
-  const topLongCand  = findSpotlightCandidate(topGainers,    sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, true,  activeFutMap, stockSectorsMap);
-  const topShortCand = findSpotlightCandidate(filteredLosers, sectorStocksMap, activeFutSet, optLiqMap, callMap, putMap, cfgObj, false, activeFutMap, stockSectorsMap);
-
-  const leftSpotlightTitle  = isPos ? '▲ TOP LONG CANDIDATE' : '▼ TOP SHORT CANDIDATE';
-  const rightSpotlightTitle = isPos ? '▼ TOP SHORT CANDIDATE' : '▲ TOP LONG CANDIDATE';
-  const leftSpotlightHtml   = isPos ? buildSpotlightCard(topLongCand, true, cfgObj, isPreMarket, scanTime, niftyChange) : buildSpotlightCard(topShortCand, false, cfgObj, isPreMarket, scanTime, niftyChange);
-  const rightSpotlightHtml  = isPos ? buildSpotlightCard(topShortCand, false, cfgObj, isPreMarket, scanTime, niftyChange) : buildSpotlightCard(topLongCand, true, cfgObj, isPreMarket, scanTime, niftyChange);
-
   const leftSecTitle  = isPos ? `▲ TOP GAINING SECTORS`  : `▼ TOP LOSING SECTORS`;
   const rightSecTitle = isPos ? `▼ TOP LOSING SECTORS`   : `▲ TOP GAINING SECTORS`;
   const leftFutTitle  = isPos ? `▲ ACTIVE FUTURES — GAINERS` : `▼ ACTIVE FUTURES — LOSERS`;
@@ -3292,9 +3944,42 @@ function rerender() {
   const leftOptTitle  = isPos ? `📞 ACTIVE CALL OPTIONS` : `📉 ACTIVE PUT OPTIONS`;
   const rightOptTitle = isPos ? `📉 ACTIVE PUT OPTIONS`  : `📞 ACTIVE CALL OPTIONS`;
 
-  /* ── 7. Sector col html ── */
-  const leftSecHtml  = buildSectorCol(leftSectors,  sectorStocksMap, activeFutSet, optLiqMap, cfgObj);
-  const rightSecHtml = buildSectorCol(rightSectors, sectorStocksMap, activeFutSet, optLiqMap, cfgObj);
+  /* ── 7. Expiry for broker Sahi format & Sector col html ── */
+  let defaultExpiryStr = '';
+  try {
+    const expRow = db.exec(`SELECT expiry_date FROM active_options WHERE scan_id = ? AND expiry_date IS NOT NULL AND expiry_date != '' LIMIT 1`, [scanId]);
+    const rawE = expRow[0]?.values[0]?.[0] || '';
+    if (rawE) {
+      defaultExpiryStr = formatExpiryForBroker(rawE);
+    } else {
+      const futRow = db.exec(`SELECT expiry_date FROM active_futures WHERE scan_id = ? AND expiry_date IS NOT NULL AND expiry_date != '' LIMIT 1`, [scanId]);
+      defaultExpiryStr = formatExpiryForBroker(futRow[0]?.values[0]?.[0] || '');
+    }
+  } catch(e) {}
+
+  /* ── 7b. Top Pick from the visible rows only ── */
+  // Mirrors buildSectorCol exactly: same lot filter, same max-% filter, same
+  // tier ranking, same per-sector cap.
+  const visiblePickSymbols = new Set();
+  [...leftSectors, ...rightSectors].forEach(sec => {
+    (sectorStocksMap[sec.name] || [])
+      .filter(s => !cfgObj.maxLot || s.lot_size <= cfgObj.maxLot)
+      .filter(s => !cfgObj.maxPct || Math.abs(s.pchange) < cfgObj.maxPct)
+      .sort((a, b) => {
+        const tierA = stockTier(a.symbol, activeFutSet, optLiqMap, cfgObj.minOptVol);
+        const tierB = stockTier(b.symbol, activeFutSet, optLiqMap, cfgObj.minOptVol);
+        if (tierB !== tierA) return tierB - tierA;
+        return (sec.isGain ? b.pchange - a.pchange : a.pchange - b.pchange);
+      })
+      .slice(0, cfgObj.stocksPerSector)
+      .forEach(s => visiblePickSymbols.add(s.symbol));
+  });
+  const bestStockInfo = computeBestStock(db, scanId, niftyChange, cfgObj.maxLot, cfgObj.maxPct, visiblePickSymbols, cfgObj.minOptVol);
+  renderTopPick(bestStockInfo);
+
+  const sectorPickMap = Object.fromEntries((bestStockInfo?.sectorPicks || []).map(pick => [pick.sector, pick]));
+  const leftSecHtml  = buildSectorCol(leftSectors,  sectorStocksMap, activeFutSet, optLiqMap, cfgObj, defaultExpiryStr, sectorPickMap);
+  const rightSecHtml = buildSectorCol(rightSectors, sectorStocksMap, activeFutSet, optLiqMap, cfgObj, defaultExpiryStr, sectorPickMap);
 
   /* ── 8. Futures html ── */
   const leftFutHtml  = leftFutures.map( (af,i) => buildFuturesRow(i+1, af, activeFutSet, optLiqMap, cfgObj.minOptVol)).join('') || '<div class="empty-col">No data</div>';
@@ -3312,24 +3997,6 @@ function rerender() {
   /* ── 11. Assemble HTML ── */
   const grid = document.getElementById('content-grid');
   grid.innerHTML = `
-
-    <!-- RANKED CANDIDATE CARDS -->
-    <div class="section-card" id="card-spotlight">
-      <div class="section-header" onclick="toggleCard(this)">
-        <span class="section-title yellow">🎯 RANKED LONG &amp; SHORT CANDIDATES</span>
-        <span class="collapse-icon">▾</span>
-      </div>
-      <div class="section-body">
-        <div class="col">
-          <div class="col-header ${isPos ? 'pos' : 'neg'}">${leftSpotlightTitle}</div>
-          <div class="spotlight-wrap">${leftSpotlightHtml}</div>
-        </div>
-        <div class="col">
-          <div class="col-header ${isPos ? 'neg' : 'pos'}">${rightSpotlightTitle}</div>
-          <div class="spotlight-wrap">${rightSpotlightHtml}</div>
-        </div>
-      </div>
-    </div>
 
     <!-- SECTOR CARD -->
     <div class="section-card" id="card-sectors">
@@ -3401,6 +4068,7 @@ function rerender() {
         <div class="meta-item"><div class="meta-key">Scan ID</div><div class="meta-val">#${scanId}</div></div>
         <div class="meta-item"><div class="meta-key">Date</div><div class="meta-val">${fmtDate(sr[1] || '')}</div></div>
         <div class="meta-item"><div class="meta-key">Time</div><div class="meta-val">${sr[2] || '—'}</div></div>
+        <div class="meta-item"><div class="meta-key">Duration</div><div class="meta-val">${durSec != null && !isNaN(durSec) ? durSec.toFixed(2) + 's' : '—'}</div></div>
         <div class="meta-item"><div class="meta-key">Data Source</div><div class="meta-val">${sr[3] || 'NSE'}</div></div>
         <div class="meta-item"><div class="meta-key">Sectors in DB</div><div class="meta-val">${totalSectors}</div></div>
         <div class="meta-item"><div class="meta-key">F&O Stocks in DB</div><div class="meta-val">${totalStocks}</div></div>
@@ -3424,11 +4092,11 @@ function rerender() {
 /* ────────────────────────────────────────────
    Nifty strip renderer
    ──────────────────────────────────────────── */
-function renderNiftyStrip(ltp, chg, dir, scanId) {
+function renderNiftyStrip(ltp, chg, dir, scanId, durSec) {
   document.getElementById('nifty-ltp').textContent = fmtNum(ltp);
 
   const chgEl = document.getElementById('nifty-change');
-  chgEl.textContent = fmtPct(chg);
+  chgEl.textContent = fmtNiftyChange(ltp, chg);
   chgEl.className   = 'nifty-change ' + (chg >= 0 ? 'pos' : 'neg');
 
   const dirEl = document.getElementById('nifty-dir');
@@ -3437,8 +4105,9 @@ function renderNiftyStrip(ltp, chg, dir, scanId) {
 
   const scanDate = document.getElementById('date-select').value;
   const scanTime = document.getElementById('scan-select').options[document.getElementById('scan-select').selectedIndex]?.text?.slice(0,8) || '';
+  const durStr = (durSec != null && !isNaN(durSec)) ? ` &nbsp;(${durSec.toFixed(1)}s)` : '';
   document.getElementById('nifty-meta').innerHTML =
-    `Scan #${scanId}<br>${fmtDate(scanDate)} &nbsp;${scanTime}`;
+    `Scan #${scanId}${durStr}<br>${fmtDate(scanDate)} &nbsp;${scanTime}`;
 }
 
 /* ────────────────────────────────────────────
