@@ -1,5 +1,5 @@
 {
-  "max_lot_size": 1500,
+  "max_lot_size": 2000,
   "sectors_to_show": 3,
   "stocks_per_sector": 3,
   "active_futures_count": 10,

@@ -30,8 +30,11 @@ Requirements satisfied:
 """
 
 import sqlite3
+import json
 import time
 import random
+import re
+import threading
 import urllib.parse
 from datetime import datetime, timezone, timedelta
 import sys
@@ -78,6 +81,75 @@ RETRY_ATTEMPTS      = 3       # max retries on transient errors
 RETRY_DELAY         = 5.0     # base seconds between retries (multiplied by attempt)
 INTER_REQUEST_DELAY = (0.8, 1.4)  # random sleep interval between requests to protect IP
 
+# -----------------------------------------------------------------------------
+# DISK CACHE (day-stable data: lot sizes, F&O symbol list — one fetch per day)
+# -----------------------------------------------------------------------------
+
+CACHE_DIR          = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
+CACHE_MAX_AGE_DAYS = 7
+
+
+def _cache_file(name: str, scan_date: str) -> str:
+    return os.path.join(CACHE_DIR, f"{name}_{scan_date}.json")
+
+
+def _prune_cache() -> None:
+    """Delete cache files older than CACHE_MAX_AGE_DAYS."""
+    try:
+        if not os.path.isdir(CACHE_DIR):
+            return
+        cutoff = time.time() - CACHE_MAX_AGE_DAYS * 86400
+        for fn in os.listdir(CACHE_DIR):
+            fp = os.path.join(CACHE_DIR, fn)
+            if os.path.isfile(fp) and os.path.getmtime(fp) < cutoff:
+                os.remove(fp)
+    except Exception:
+        pass
+
+
+def _load_cache(name: str, scan_date: str):
+    """Return today's cached JSON payload, or None."""
+    try:
+        fp = _cache_file(name, scan_date)
+        if os.path.isfile(fp):
+            with open(fp, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
+
+def _load_latest_cache(name: str):
+    """Return (payload, filename) from the most recent cache file for name."""
+    try:
+        candidates = sorted(
+            fn for fn in os.listdir(CACHE_DIR)
+            if fn.startswith(f"{name}_") and fn.endswith(".json")
+        )
+    except Exception:
+        return None, None
+    if not candidates:
+        return None, None
+    fp = os.path.join(CACHE_DIR, candidates[-1])
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            return json.load(f), candidates[-1]
+    except Exception:
+        return None, None
+
+
+def _save_cache(name: str, scan_date: str, payload) -> None:
+    """Atomically write payload to today's cache file (best effort)."""
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        fp = _cache_file(name, scan_date)
+        tmp = fp + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        os.replace(tmp, fp)
+    except Exception:
+        pass
+
 
 # -----------------------------------------------------------------------------
 # HTTP SESSION (curl_cffi impersonates Chrome 120 for TLS fingerprint match)
@@ -87,15 +159,16 @@ def create_session() -> cffi_requests.Session:
     """Create a curl_cffi session configured to mimic a standard browser."""
     session = cffi_requests.Session(impersonate="chrome120")
     session.headers.update({
-        "Accept":             "*/*",
-        "Accept-Language":    "en-US,en;q=0.9",
-        "Referer":            "https://www.nseindia.com/market-data/live-market-indices/heatmap",
-        "Sec-Ch-Ua":          '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        "Sec-Ch-Ua-Mobile":   "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest":     "empty",
-        "Sec-Fetch-Mode":     "cors",
-        "Sec-Fetch-Site":     "same-origin",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.nseindia.com/market-data/live-market-indices/heatmap",
+        "Sec-Ch-Ua": "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"",
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": "\"Windows\"",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
     })
     return session
 
@@ -317,35 +390,72 @@ def fetch_active_stock_options(session, nifty_dir: str = "POSITIVE") -> tuple:
     """
     Fetch Most Active Stock Options from NSE.
     Returns (liq_map, call_map, put_map) where:
-      - liq_map: combined map based on market direction (or total) for liquidity checks: {sym: volume}
-      - call_map: {symbol: {"volume": int, "contracts_count": int}}
-      - put_map:  {symbol: {"volume": int, "contracts_count": int}}
+      - liq_map: combined map based on market direction for liquidity checks: {sym: volume}
+      - call_map: {symbol: {"volume": int, "contracts_count": int, "contracts": list, "top_strike": float, ...}}
+      - put_map:  {symbol: {"volume": int, "contracts_count": int, "contracts": list, "top_strike": float, ...}}
     """
     url = "https://www.nseindia.com/api/snapshot-derivatives-equity?index=options"
     resp = safe_get(session, url)
     if not resp:
         return {}, {}, {}
     try:
-        data   = resp.json()
+        data = resp.json()
         vol_all = data.get("volume", {}).get("data", [])
+        val_all = data.get("value", {}).get("data", [])
+        all_contracts = vol_all + val_all
         call_map = {}
         put_map  = {}
-        for c in vol_all:
+        seen_identifiers = set()
+
+        for c in all_contracts:
             if c.get("instrument") != "Stock Options":
                 continue
+            c_id = c.get("identifier") or f"{c.get('underlying')}_{c.get('optionType')}_{c.get('strikePrice')}_{c.get('expiryDate')}"
+            if c_id in seen_identifiers:
+                continue
+            seen_identifiers.add(c_id)
+
             otype = c.get("optionType")
             sym = c.get("underlying", "").strip().upper()
             vol = int(c.get("numberOfContractsTraded", 0) or 0)
-            if otype == "Call":
-                if sym not in call_map:
-                    call_map[sym] = {"volume": 0, "contracts_count": 0}
-                call_map[sym]["volume"] += vol
-                call_map[sym]["contracts_count"] += 1
-            elif otype == "Put":
-                if sym not in put_map:
-                    put_map[sym] = {"volume": 0, "contracts_count": 0}
-                put_map[sym]["volume"] += vol
-                put_map[sym]["contracts_count"] += 1
+            strike = float(c.get("strikePrice") or 0) if c.get("strikePrice") is not None else None
+            ltp = float(c.get("lastPrice") or 0) if c.get("lastPrice") is not None else None
+            oi = int(c.get("openInterest", 0) or 0)
+            expiry = c.get("expiryDate", "")
+            spot = float(c.get("underlyingValue") or 0) if c.get("underlyingValue") is not None else None
+
+            contract_info = {
+                "strike": strike,
+                "ltp": ltp,
+                "vol": vol,
+                "oi": oi,
+                "expiry": expiry,
+                "spot": spot
+            }
+
+            target_dict = call_map if otype == "Call" else (put_map if otype == "Put" else None)
+            if target_dict is not None:
+                if sym not in target_dict:
+                    target_dict[sym] = {
+                        "volume": 0,
+                        "contracts_count": 0,
+                        "contracts": [],
+                        "top_strike": strike,
+                        "top_ltp": ltp,
+                        "top_oi": oi,
+                        "top_expiry": expiry,
+                        "top_vol": vol,
+                        "spot": spot
+                    }
+                target_dict[sym]["volume"] += vol
+                target_dict[sym]["contracts_count"] += 1
+                target_dict[sym]["contracts"].append(contract_info)
+                if vol > target_dict[sym]["top_vol"]:
+                    target_dict[sym]["top_vol"] = vol
+                    target_dict[sym]["top_strike"] = strike
+                    target_dict[sym]["top_ltp"] = ltp
+                    target_dict[sym]["top_oi"] = oi
+                    target_dict[sym]["top_expiry"] = expiry
 
         # liq_map for directional bias ([*] marker): {symbol: volume}
         target_map = put_map if nifty_dir == "NEGATIVE" else call_map
@@ -430,6 +540,8 @@ SQL_SCHEMA = [
         open_price  REAL,
         day_high    REAL,
         day_low     REAL,
+        ext_from_low REAL,   -- % extension of LTP above day low (chase-risk gauge)
+        fut_basis    REAL,   -- stock futures premium(+)/discount(-) vs spot, %
         timestamp   TEXT    NOT NULL
     );""",
     "CREATE INDEX IF NOT EXISTS idx_stocks_scan   ON stocks  (scan_id);",
@@ -461,10 +573,20 @@ SQL_SCHEMA = [
         option_type      TEXT NOT NULL,
         volume_contracts INTEGER,
         strikes_count    INTEGER DEFAULT 1,
+        strike_price     REAL,
+        option_ltp       REAL,
+        expiry_date      TEXT,
+        open_interest    INTEGER,
+        underlying_value REAL,
         timestamp        TEXT NOT NULL
     );""",
     "CREATE INDEX IF NOT EXISTS idx_active_options_scan   ON active_options (scan_id);",
     "CREATE INDEX IF NOT EXISTS idx_active_options_symbol ON active_options (symbol);",
+    """CREATE TABLE IF NOT EXISTS app_config (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );""",
     """CREATE VIEW IF NOT EXISTS v_latest_sectors AS
        SELECT s.scan_id, sc.scan_date, sc.scan_time, s.sector_name, s.change_pct
        FROM sectors s
@@ -472,7 +594,7 @@ SQL_SCHEMA = [
        WHERE s.scan_id = (SELECT MAX(scan_id) FROM scans)
        ORDER BY s.change_pct DESC;""",
     """CREATE VIEW IF NOT EXISTS v_latest_stocks AS
-       SELECT st.scan_id, sc.scan_date, sc.scan_time, st.sector_name, st.symbol, st.stock_name, st.ltp, st.change_pct, st.lot_size, st.open_price, st.day_high, st.day_low
+       SELECT st.scan_id, sc.scan_date, sc.scan_time, st.sector_name, st.symbol, st.stock_name, st.ltp, st.change_pct, st.lot_size, st.open_price, st.day_high, st.day_low, st.ext_from_low, st.fut_basis
        FROM stocks st
        JOIN scans sc ON st.scan_id = sc.scan_id
        WHERE st.scan_id = (SELECT MAX(scan_id) FROM scans)
@@ -508,6 +630,18 @@ def update_terminal_summary_view(
     """
     lot_filter_stocks = f"AND (st.lot_size IS NOT NULL AND st.lot_size <= {max_lot_size})" if (max_lot_size and max_lot_size > 0) else ""
     lot_filter_af = f"AND (lot_size IS NOT NULL AND lot_size <= {max_lot_size})" if (max_lot_size and max_lot_size > 0) else ""
+
+    # The view only depends on these four params - skip the DROP/CREATE when
+    # they are unchanged since the last scan.
+    view_sig = json.dumps([nifty_dir, max_lot_size, stocks_per_sector, active_futures_count])
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_config WHERE key = 'terminal_view_sig';"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        row = None  # app_config not created yet (fresh DB, first scan)
+    if row and row[0] == view_sig:
+        return
 
     if nifty_dir == "POSITIVE":
         s_gain, s_af_gain, s_lose, s_af_lose = 1, 2, 3, 4
@@ -630,13 +764,28 @@ def update_terminal_summary_view(
     """
     conn.execute("DROP VIEW IF EXISTS v_terminal_summary;")
     conn.execute(view_sql)
+    conn.execute(
+        "INSERT OR REPLACE INTO app_config (key, value, updated_at) VALUES (?, ?, ?);",
+        ("terminal_view_sig", view_sig, datetime.now(IST).strftime("%Y-%m-%dT%H:%M:%S%z"))
+    )
     conn.commit()
+
+
+SCHEMA_VERSION = 2  # bump when SQL_SCHEMA or migrations below change
+                      # v2: stocks gains ext_from_low + fut_basis columns
 
 
 def init_db(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+
+    # Migrations and DDL only run when the schema version differs; the ~35
+    # ALTER/CREATE statements below are pure per-scan overhead otherwise.
+    if conn.execute("PRAGMA user_version;").fetchone()[0] == SCHEMA_VERSION:
+        return conn
+
     cur = conn.cursor()
 
     # Migration: ensure lot_size column exists in existing databases
@@ -646,11 +795,26 @@ def init_db(db_path: str) -> sqlite3.Connection:
         except sqlite3.OperationalError:
             pass  # column already exists
 
-    # Migration: ensure strikes_count column exists in active_options
-    try:
-        cur.execute("ALTER TABLE active_options ADD COLUMN strikes_count INTEGER DEFAULT 1;")
-    except sqlite3.OperationalError:
-        pass  # column already exists
+    # Migration: ensure strikes_count and strike details exist in active_options
+    for col, col_type in (
+        ("strikes_count", "INTEGER DEFAULT 1"),
+        ("strike_price", "REAL"),
+        ("option_ltp", "REAL"),
+        ("expiry_date", "TEXT"),
+        ("open_interest", "INTEGER"),
+        ("underlying_value", "REAL"),
+    ):
+        try:
+            cur.execute(f"ALTER TABLE active_options ADD COLUMN {col} {col_type};")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+    # Migration: ensure app_config table exists
+    cur.execute("""CREATE TABLE IF NOT EXISTS app_config (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );""")
 
     # Migration: ensure open_price, day_high, day_low exist in stocks
     for col in ("open_price", "day_high", "day_low"):
@@ -659,33 +823,42 @@ def init_db(db_path: str) -> sqlite3.Connection:
         except sqlite3.OperationalError:
             pass  # column already exists
 
+    # Migration (v2): extension-from-low and futures-basis columns in stocks
+    for col in ("ext_from_low", "fut_basis"):
+        try:
+            cur.execute(f"ALTER TABLE stocks ADD COLUMN {col} REAL;")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+    # Migration: ensure duration_seconds column exists in scans
+    try:
+        cur.execute("ALTER TABLE scans ADD COLUMN duration_seconds REAL;")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
     # Drop views to recreate them with updated column definitions
     cur.execute("DROP VIEW IF EXISTS v_latest_stocks;")
     cur.execute("DROP VIEW IF EXISTS v_terminal_summary;")
     cur.execute("DROP VIEW IF EXISTS v_latest_active_futures;")
+    # v_terminal_summary is recreated after the scan's inserts by
+    # update_terminal_summary_view(); invalidate its skip-signature so the
+    # rebuild actually happens after this migration dropped the view.
+    cur.execute("DELETE FROM app_config WHERE key = 'terminal_view_sig';")
 
     for stmt in SQL_SCHEMA:
         cur.execute(stmt)
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
     conn.commit()
-
-    # Initialize v_terminal_summary view
-    update_terminal_summary_view(
-        conn,
-        nifty_dir="POSITIVE",
-        max_lot_size=DEFAULT_MAX_LOT_SIZE,
-        stocks_per_sector=DEFAULT_STOCKS_PER_SECTOR,
-        active_futures_count=DEFAULT_ACTIVE_FUTURES_COUNT
-    )
 
     return conn
 
 
-def db_save_scan(conn: sqlite3.Connection, scan_date: str, scan_time: str, data_source: str) -> int:
+def db_save_scan(conn: sqlite3.Connection, scan_date: str, scan_time: str, data_source: str,
+                 duration_seconds: float = None) -> int:
     cur = conn.execute(
-        "INSERT INTO scans (scan_date, scan_time, data_source) VALUES (?, ?, ?);",
-        (scan_date, scan_time, data_source)
+        "INSERT INTO scans (scan_date, scan_time, data_source, duration_seconds) VALUES (?, ?, ?, ?);",
+        (scan_date, scan_time, data_source, duration_seconds)
     )
-    conn.commit()
     return cur.lastrowid
 
 
@@ -694,60 +867,6 @@ def db_save_nifty(conn: sqlite3.Connection, scan_id: int, ltp: float, change_pct
     conn.execute(
         "INSERT INTO nifty (scan_id, ltp, change_pct, direction, timestamp) VALUES (?, ?, ?, ?, ?);",
         (scan_id, ltp, change_pct, direction, ts)
-    )
-
-
-def db_save_sector(conn: sqlite3.Connection, scan_id: int, sector_name: str, change_pct: float):
-    conn.execute(
-        "INSERT INTO sectors (scan_id, sector_name, change_pct) VALUES (?, ?, ?);",
-        (scan_id, sector_name, change_pct)
-    )
-
-
-def db_save_stock(conn: sqlite3.Connection, scan_id: int, sector_name: str, symbol: str,
-                  stock_name: str, ltp: float, change_pct: float, is_fno: bool, ts: str,
-                  lot_size: int = None, open_price: float = None, day_high: float = None,
-                  day_low: float = None):
-    conn.execute(
-        """INSERT INTO stocks
-           (scan_id, sector_name, symbol, stock_name, ltp, change_pct, is_fno, lot_size,
-            open_price, day_high, day_low, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
-        (scan_id, sector_name, symbol, stock_name, ltp, change_pct, int(is_fno), lot_size,
-         open_price, day_high, day_low, ts)
-    )
-
-
-def db_save_active_future(conn: sqlite3.Connection, scan_id: int, contract: dict, sort_by: str, ts: str,
-                          lot_size: int = None):
-    conn.execute(
-        """INSERT INTO active_futures
-           (scan_id, symbol, instrument, expiry_date, ltp, change_pct, volume_contracts,
-            value_lakhs, open_interest, underlying_value, sort_by, lot_size, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
-        (
-            scan_id,
-            contract.get("underlying", "").strip().upper(),
-            contract.get("instrument", ""),
-            contract.get("expiryDate", ""),
-            float(contract.get("lastPrice", 0) or 0),
-            float(contract.get("pChange", 0) or 0),
-            int(contract.get("numberOfContractsTraded", 0) or 0),
-            float(contract.get("totalTurnover", 0) or 0),
-            int(contract.get("openInterest", 0) or 0),
-            float(contract.get("underlyingValue", 0) or 0),
-            sort_by,
-            lot_size,
-            ts
-        )
-    )
-
-
-def db_save_active_option(conn: sqlite3.Connection, scan_id: int, symbol: str, option_type: str, volume: int, ts: str, strikes_count: int = 1):
-    conn.execute(
-        """INSERT INTO active_options (scan_id, symbol, option_type, volume_contracts, strikes_count, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?);""",
-        (scan_id, symbol, option_type, volume, strikes_count, ts)
     )
 
 
@@ -760,41 +879,77 @@ def fmt_pct(val: float) -> str:
     return f"+{val:.2f}%" if val >= 0 else f"{val:.2f}%"
 
 
-def print_sector_summary(rank: int, sector_name: str, sector_change: float, stocks: list, lot_sizes: dict = None):
-    """Print sector header and its top constituent stocks with contract lot size and Open condition."""
-    print(f"{rank}. {sector_name:<20} {fmt_pct(sector_change)}")
-    lot_map = lot_sizes or {}
+def is_ohlc_data_reliable(stocks: list, bad_fraction_limit: float = 0.10) -> bool:
+    """Reject scan-wide OHLC signals when too many rows are flat or unusable."""
+    by_symbol = {}
     for stk in stocks:
-        sym = stk['symbol']
-        lot = lot_map.get(sym)
-        lot_str = f"Lot: {lot}" if lot else ""
+        symbol = str(stk.get("symbol", "")).strip().upper()
+        if symbol:
+            by_symbol.setdefault(symbol, stk)
 
-        op = stk.get('open_price') or 0
-        dh = stk.get('day_high') or 0
-        dl = stk.get('day_low') or 0
-        chg = stk.get('pchange') or 0
+    if not by_symbol:
+        return False
 
-        ohl_badge = ""
-        if op > 0 and dl > 0 and chg > 0 and dl <= op:
-            wick = (op - dl) / op * 100
-            if wick <= 0.15:
-                ohl_badge = f"[🔥 O=L {wick:.2f}%]"
-        elif op > 0 and dh > 0 and chg < 0 and dh >= op:
-            wick = (dh - op) / op * 100
-            if wick <= 0.15:
-                ohl_badge = f"[❄️ O=H {wick:.2f}%]"
+    bad_count = 0
+    for stk in by_symbol.values():
+        op = float(stk.get("open_price") or 0)
+        high = float(stk.get("day_high") or 0)
+        low = float(stk.get("day_low") or 0)
+        if op <= 0 or high <= 0 or low <= 0 or high < op or low > op or high < low:
+            bad_count += 1
+        elif high - low <= 0.01:
+            # A zero-range quote is common while the NSE feed is still initializing.
+            bad_count += 1
 
-        print(f"   {sym:<14} {fmt_pct(chg):<9} {ohl_badge:<14} {lot_str}")
-    print()
+    return bad_count / len(by_symbol) < bad_fraction_limit
 
 
-# Default settings (can also be overridden in if __name__ == '__main__')
-DEFAULT_MAX_LOT_SIZE         = 1500
-DEFAULT_STOCKS_PER_SECTOR    = 2
-DEFAULT_SECTORS_TO_SHOW      = 2    # Number of top gaining/losing sectors to display
-DEFAULT_ACTIVE_FUTURES_COUNT = 2
-DEFAULT_MIN_OPTION_VOLUME    = 500   # 👍 if stock option vol >= this, 👎 otherwise
-DEFAULT_MAX_PERCENTAGE       = 0.0   # Filter out stocks with |change%| > this (0 = no filter)
+# -----------------------------------------------------------------------------
+# Configuration (unified via scanner_config.json)
+# -----------------------------------------------------------------------------
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanner_config.json")
+
+def load_scanner_config():
+    defaults = {
+        "max_lot_size": 1500,
+        "sectors_to_show": 2,
+        "stocks_per_sector": 10,
+        "active_futures_count": 10,
+        "min_option_volume": 500,
+        "max_percentage": 0.0,
+        "top_n_candidates": 3,
+        "weights": {
+            "price": 3.0,
+            "sector": 2.0,
+            "options": 2.0,
+            "futures": 1.5,
+            "ohlc": 1.0,
+            "breadth": 1.0
+        },
+        "ext_penalty_start": 0.02,
+        "ext_penalty_end": 0.08,
+        "db_file": "market_scanner.db"
+    }
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                defaults.update(cfg)
+                if "weights" in cfg and isinstance(cfg["weights"], dict):
+                    defaults["weights"].update(cfg["weights"])
+        except Exception:
+            pass
+    return defaults
+
+_CFG = load_scanner_config()
+
+# Default settings (loaded from scanner_config.json)
+DEFAULT_MAX_LOT_SIZE         = _CFG.get("max_lot_size", 1500)
+DEFAULT_STOCKS_PER_SECTOR    = _CFG.get("stocks_per_sector", 10)
+DEFAULT_SECTORS_TO_SHOW      = _CFG.get("sectors_to_show", 2)
+DEFAULT_ACTIVE_FUTURES_COUNT = _CFG.get("active_futures_count", 10)
+DEFAULT_MIN_OPTION_VOLUME    = _CFG.get("min_option_volume", 500)
+DEFAULT_MAX_PERCENTAGE       = float(_CFG.get("max_percentage", 0.0))
 
 
 # -----------------------------------------------------------------------------
@@ -815,6 +970,8 @@ def run_scanner(
     scan_time = now_ist.strftime("%H:%M:%S")
     timestamp = now_ist.strftime("%Y-%m-%dT%H:%M:%S%z")
 
+    _prune_cache()
+
     # 1. Establish session
     session = create_session()
     if not warm_up_session(session):
@@ -822,7 +979,17 @@ def run_scanner(
         sys.exit(1)
 
     time.sleep(1.0)
-    lot_sizes = fetch_nse_lot_sizes(session)
+
+    # Lot sizes change at most once per day - reuse today's disk cache if present
+    lot_sizes = _load_cache("lot_sizes", scan_date)
+    if lot_sizes:
+        print(f"[+] Loaded {len(lot_sizes)} contract lot sizes (disk cache)")
+    else:
+        lot_sizes = fetch_nse_lot_sizes(session)
+        if lot_sizes:
+            _save_cache("lot_sizes", scan_date, lot_sizes)
+        else:
+            print("[!] Lot sizes unavailable - the max-lot-size filter will drop every stock from sector lists")
 
     # 1.1 Fetch F&O Ban list (hard-remove banned stocks from display)
     fno_banned = fetch_fno_ban_list(session)
@@ -871,8 +1038,23 @@ def run_scanner(
 
     time.sleep(1.0)
 
-    # 5. Fetch F&O securities set
-    fno_symbols = fetch_fno_symbols(session)
+    # 5. Fetch F&O securities set (day-stable - reuse today's disk cache if present)
+    fno_symbols = _load_cache("fno_symbols", scan_date)
+    if fno_symbols is not None:
+        fno_symbols = set(fno_symbols)
+        print(f"[+] Active F&O symbols loaded from disk cache: {len(fno_symbols)}")
+    else:
+        fno_symbols = fetch_fno_symbols(session)
+        if fno_symbols:
+            _save_cache("fno_symbols", scan_date, sorted(fno_symbols))
+
+    if not fno_symbols:
+        # Live fetch failed and nothing cached for today - fall back to the most
+        # recent cached list rather than aborting the whole scan.
+        fno_symbols, cache_fn = _load_latest_cache("fno_symbols")
+        if fno_symbols:
+            fno_symbols = set(fno_symbols)
+            print(f"[!] Using cached F&O list from {cache_fn}: {len(fno_symbols)} symbols")
     if not fno_symbols:
         print("[X] Unable to obtain F&O stocks list. Aborting.")
         sys.exit(1)
@@ -884,7 +1066,7 @@ def run_scanner(
     sectors_data   = {}
     total_sectors  = len(sector_entries)
     completed      = [0]          # mutable counter shared across threads
-    lock           = __import__("threading").Lock()
+    lock           = threading.Lock()
 
     def _fetch_one(entry):
         """Fetch one sector's constituents with a polite delay, return result."""
@@ -920,6 +1102,7 @@ def run_scanner(
     # 7. Fetch Most Active Future Contracts + Active Stock Options (needed for display)
     active_futures = fetch_most_active_futures(session)
     opt_liq_map, call_opt_map, put_opt_map = fetch_active_stock_options(session, nifty_dir)
+    session.close()  # no more network I/O - release the TLS session
 
     # 8. Sort sectors and compute top gainers/losers for display
     sorted_sectors = sorted(
@@ -937,13 +1120,35 @@ def run_scanner(
         top_losers = [(name, data) for name, data in top_losers if name not in gainer_names]
 
     # 8.1 Extract Top Gaining and Losing Stock Futures from Active Futures
+    # Quick lookup for stock pchange (the active-futures part is filled by the
+    # merged pass below)
+    sym_pct_lookup = {}
+    for sec_name, sec_info in sectors_data.items():
+        for stk in sec_info.get("stocks", []):
+            if stk.get("symbol"):
+                sym_pct_lookup[stk["symbol"].upper()] = stk.get("pchange", 0.0)
+
+    stock_lookup = {stk["symbol"]: stk for s_info in sectors_data.values() for stk in s_info.get("stocks", [])}
+
     stock_futures = []
-    seen_af_syms = set()
+    seen_af_syms = set()     # dedupe by underlying symbol (display list)
+    active_fut_symbols = set()
+    fut_basis_map = {}       # symbol -> futures premium(+)/discount(-) vs spot, %
     all_af = active_futures.get("volume", []) + active_futures.get("value", [])
     for c in all_af:
         inst = c.get("instrument", "")
         sym = c.get("underlying", "").strip().upper()
-        if inst == "Stock Futures" and sym and sym not in seen_af_syms and sym not in fno_banned:
+        if not sym:
+            continue
+        if inst == "Stock Futures":
+            active_fut_symbols.add(sym)
+            fut_ltp = float(c.get("lastPrice", 0) or 0)
+            und_val = float(c.get("underlyingValue", 0) or 0)
+            if fut_ltp > 0 and und_val > 0 and sym not in fut_basis_map:
+                fut_basis_map[sym] = (fut_ltp - und_val) / und_val * 100.0
+        if sym not in sym_pct_lookup:
+            sym_pct_lookup[sym] = float(c.get("pChange", 0) or 0)
+        if inst == "Stock Futures" and sym not in seen_af_syms and sym not in fno_banned:
             seen_af_syms.add(sym)
             lot = lot_sizes.get(sym)
             if max_lot_size and max_lot_size > 0:
@@ -958,17 +1163,6 @@ def run_scanner(
 
     top_active_gainers = sorted(stock_futures, key=lambda x: x["pchange"], reverse=True)[:active_futures_count]
     top_active_losers = sorted(stock_futures, key=lambda x: x["pchange"])[:active_futures_count]
-
-    # Quick lookup for stock pchange from sectors_data and active_futures
-    sym_pct_lookup = {}
-    for sec_name, sec_info in sectors_data.items():
-        for stk in sec_info.get("stocks", []):
-            if stk.get("symbol"):
-                sym_pct_lookup[stk["symbol"].upper()] = stk.get("pchange", 0.0)
-    for c in all_af:
-        u_sym = c.get("underlying", "").strip().upper()
-        if u_sym and u_sym not in sym_pct_lookup:
-            sym_pct_lookup[u_sym] = float(c.get("pChange", 0) or 0)
 
     # 8.2 Build Top Active Call & Put Options lists capped at stocks_per_sector, sorted by % change
     # First select top active options by volume:
@@ -988,7 +1182,7 @@ def run_scanner(
     top_active_calls = sorted(raw_active_calls, key=lambda x: x["pchange"], reverse=True)
     top_active_puts  = sorted(raw_active_puts, key=lambda x: x["pchange"])
 
-    COL_WIDTH = 48
+    COL_WIDTH = 58          # widened for the L (ext-from-low) and B (futures basis) columns
     GRID_WIDTH = COL_WIDTH * 2 + 3
     SEP_DOUBLE = "=" * GRID_WIDTH
     SEP_MID    = "-" * COL_WIDTH + "-+-" + "-" * COL_WIDTH
@@ -998,14 +1192,10 @@ def run_scanner(
     _RED = "\033[91m"   # bright red    (negative %)
     _YEL = "\033[93m"   # bright yellow (Standard F&O Options)
     _CYN = "\033[96m"   # bright cyan   (Active Futures)
+    _DIM = "\033[90m"   # bright black  (no option activity)
     _RST = "\033[0m"    # reset
 
-    # Set of underlying symbols present in active futures
-    active_fut_symbols = {
-        c.get("underlying", "").strip().upper()
-        for c in all_af
-        if c.get("instrument") == "Stock Futures" and c.get("underlying")
-    }
+    os.system('cls')
 
     print()
     print(SEP_DOUBLE)
@@ -1017,27 +1207,67 @@ def run_scanner(
     print(f"Data Source: {DATA_SOURCE}")
     print(SEP_DOUBLE)
 
-    os.system('cls')
-
     def _cpct(val: float) -> str:
         """Return a colour-coded percentage string: green if >=0, red if <0."""
         txt = fmt_pct(val)
         return f"{_GRN}{txt}{_RST}" if val >= 0 else f"{_RED}{txt}{_RST}"
 
-    nifty_lot  = lot_sizes.get("NIFTY", 65)
+    def _cpts(val: float) -> str:
+        txt = f"{val:+.2f}"
+        return f"{_GRN}{txt}{_RST}" if val >= 0 else f"{_RED}{txt}{_RST}"
+
+    nifty_pts  = (nifty_ltp * nifty_change) / (100 + nifty_change) if (100 + nifty_change) != 0 else 0
     dir_colour = _GRN if nifty_dir == "POSITIVE" else _RED
     # print("NIFTY 50")
-    print(f"NIFTY 50 --> LTP: {nifty_ltp:,.2f}   Change: {_cpct(nifty_change)}   {dir_colour}{nifty_dir}{_RST}")
-    # print(f"Lot Size: {nifty_lot}")
+    print(f"NIFTY 50 --> LTP: {nifty_ltp:,.2f}   Change: {_cpts(nifty_pts)} ({_cpct(nifty_change)})   {dir_colour}{nifty_dir}{_RST}")
 
-    stock_lookup = {stk["symbol"]: stk for s_info in sectors_data.values() for stk in s_info.get("stocks", [])}
+    ohlc_data_reliable = is_ohlc_data_reliable(
+        [stk for s_info in sectors_data.values() for stk in s_info.get("stocks", [])]
+    )
+
+    def _filter_sector_stocks(stocks_list: list) -> list:
+        """Apply the max-lot-size and max-percentage display filters once per sector."""
+        filtered = stocks_list
+        if max_lot_size and max_lot_size > 0:
+            filtered = [s for s in filtered if (lot := lot_sizes.get(s["symbol"])) and lot <= max_lot_size]
+        if max_percentage and max_percentage > 0:
+            filtered = [s for s in filtered if abs(s["pchange"]) < max_percentage]
+        return filtered
+
+    # Rank priority:
+    # Tier 3: both Active Futures (+) and Top Active Option ([*])
+    # Tier 2: Active Futures (+) only
+    # Tier 1: Top Active Option ([*]) only
+    # Tier 0: Neither
+    def _stock_rank_key(stk_dict, is_gain_side):
+        s_sym = stk_dict['symbol']
+        has_fut = s_sym in active_fut_symbols
+        has_opt = opt_liq_map.get(s_sym, 0) >= min_option_volume
+        if has_fut and has_opt:
+            tier = 3
+        elif has_fut:
+            tier = 2
+        elif has_opt:
+            tier = 1
+        else:
+            tier = 0
+        pct = stk_dict['pchange']
+        pct_val = pct if is_gain_side else -pct
+        return (tier, pct_val)
 
     def _fmt_stock_row(sym: str, pchange: float, lot: int, col_w: int, stk: dict = None) -> str:
         lot_str  = f"Lot: {lot}" if lot else ""
         in_fut   = sym in active_fut_symbols
         fut_str  = "+"  if in_fut else " "
-        is_top   = opt_liq_map.get(sym, 0) >= min_option_volume
-        opt_str  = "[*]" if is_top else "[~]"
+        opt_vol  = opt_liq_map.get(sym, 0)
+        if opt_vol >= min_option_volume:
+            opt_str = "[*]"                      # top active option -> scalp-able
+        elif opt_vol > 0:
+            opt_str = "[~]"                      # some option activity, below threshold
+        else:
+            # no option row for this symbol in the snapshot - that is "no reading",
+            # NOT proof of illiquidity (the list only carries ~40 stock-option rows)
+            opt_str = "[·]"
         pct_plain = fmt_pct(pchange)
 
         ohl_str = "   "
@@ -1046,20 +1276,31 @@ def run_scanner(
             op = target_stk.get("open_price") or 0
             dh = target_stk.get("day_high") or 0
             dl = target_stk.get("day_low") or 0
-            if op > 0 and dl > 0 and pchange > 0 and dl <= op:
+            if ohlc_data_reliable and dh > dl and op > 0 and dl > 0 and pchange > 0 and dl <= op:
                 wick = (op - dl) / op * 100
                 if wick <= 0.15:
                     ohl_str = "O=L"
-            elif op > 0 and dh > 0 and pchange < 0 and dh >= op:
+            elif ohlc_data_reliable and dh > dl and op > 0 and dh > 0 and pchange < 0 and dh >= op:
                 wick = (dh - op) / op * 100
                 if wick <= 0.15:
                     ohl_str = "O=H"
 
-        row = f"   {sym:<10} {pct_plain:>7}  {ohl_str}  {lot_str:<9}  {fut_str}  {opt_str}"
+        # L = % extension above day low (chase-risk gauge), B = futures basis vs spot
+        ext_str   = "L--"
+        basis_str = "B--"
+        if target_stk:
+            m_lo = float(target_stk.get("day_low") or 0)
+            m_lt = float(target_stk.get("ltp") or 0)
+            if m_lo > 0 and m_lt > 0:
+                ext_str = f"L{(m_lt - m_lo) / m_lo * 100.0:+.1f}"
+        if sym in fut_basis_map:
+            b_val = fut_basis_map[sym]
+            basis_str = f"B{b_val:+.2f}" if abs(b_val) >= 0.005 else "B 0.00"
+
+        row = f"   {sym:<10} {pct_plain:>7}  {ohl_str} {ext_str:<6} {basis_str:<7} {lot_str:<9} {fut_str} {opt_str}"
         return f"{row:<{col_w}}"
 
-    import re as _re
-    _PCT_RE = _re.compile(r'([+-]\d+\.\d+%)')
+    _PCT_RE = re.compile(r'([+-]\d+\.\d+%?)')
 
     def _colorize_pct(s: str) -> str:
         """Wrap every +/- percentage token with green or red ANSI codes."""
@@ -1075,14 +1316,14 @@ def run_scanner(
         pl = _colorize_pct(pl)
         pr = _colorize_pct(pr)
         # Colorize O=L / O=H indicators
-        pl = pl.replace("  O=L  ", f"  {_GRN}O=L{_RST}  ").replace("  O=H  ", f"  {_RED}O=H{_RST}  ")
-        pr = pr.replace("  O=L  ", f"  {_GRN}O=L{_RST}  ").replace("  O=H  ", f"  {_RED}O=H{_RST}  ")
+        pl = pl.replace(" O=L ", f" {_GRN}O=L{_RST} ").replace(" O=H ", f" {_RED}O=H{_RST} ")
+        pr = pr.replace(" O=L ", f" {_GRN}O=L{_RST} ").replace(" O=H ", f" {_RED}O=H{_RST} ")
         # Colorize Active Futures "+" indicator
-        pl = pl.replace("  +  ", f"  {_CYN}+{_RST}  ")
-        pr = pr.replace("  +  ", f"  {_CYN}+{_RST}  ")
+        pl = pl.replace(" + ", f" {_CYN}+{_RST} ")
+        pr = pr.replace(" + ", f" {_CYN}+{_RST} ")
         # Colorize Option liquidity indicator
-        pl = pl.replace("[*]", f"{_GRN}[*]{_RST}").replace("[~]", f"{_YEL}[~]{_RST}")
-        pr = pr.replace("[*]", f"{_GRN}[*]{_RST}").replace("[~]", f"{_YEL}[~]{_RST}")
+        pl = pl.replace("[*]", f"{_GRN}[*]{_RST}").replace("[~]", f"{_YEL}[~]{_RST}").replace("[·]", f"{_DIM}[·]{_RST}")
+        pr = pr.replace("[*]", f"{_GRN}[*]{_RST}").replace("[~]", f"{_YEL}[~]{_RST}").replace("[·]", f"{_DIM}[·]{_RST}")
         print(f"{pl} | {pr}")
 
     # Determine left and right column data based on NIFTY direction
@@ -1133,32 +1374,7 @@ def run_scanner(
             sp = max(1, COL_WIDTH - len(rank_str) - len(pct_str))
             left_block.append(f"{rank_str}{' ' * sp}{pct_str}")
 
-            s_stocks = s_info["stocks"]
-            if max_lot_size and max_lot_size > 0:
-                s_stocks = [s for s in s_stocks if lot_sizes.get(s["symbol"]) and lot_sizes.get(s["symbol"]) <= max_lot_size]
-            if max_percentage and max_percentage > 0:
-                s_stocks = [s for s in s_stocks if abs(s["pchange"]) <= max_percentage]
-            # Rank priority:
-            # Tier 3: both Active Futures (+) and Top Active Option ([*])
-            # Tier 2: Active Futures (+) only
-            # Tier 1: Top Active Option ([*]) only
-            # Tier 0: Neither
-            def _stock_rank_key(stk_dict, is_gain_side):
-                s_sym = stk_dict['symbol']
-                has_fut = s_sym in active_fut_symbols
-                has_opt = opt_liq_map.get(s_sym, 0) >= min_option_volume
-                if has_fut and has_opt:
-                    tier = 3
-                elif has_fut:
-                    tier = 2
-                elif has_opt:
-                    tier = 1
-                else:
-                    tier = 0
-                pct = stk_dict['pchange']
-                pct_val = pct if is_gain_side else -pct
-                return (tier, pct_val)
-
+            s_stocks = _filter_sector_stocks(s_info["stocks"])
             top_s = sorted(s_stocks, key=lambda x: _stock_rank_key(x, left_is_gain), reverse=True)[:stocks_per_sector]
             for stk in top_s:
                 sym = stk['symbol']
@@ -1172,12 +1388,7 @@ def run_scanner(
             sp = max(1, COL_WIDTH - len(rank_str) - len(pct_str))
             right_block.append(f"{rank_str}{' ' * sp}{pct_str}")
 
-            s_stocks = s_info["stocks"]
-            if max_lot_size and max_lot_size > 0:
-                s_stocks = [s for s in s_stocks if lot_sizes.get(s["symbol"]) and lot_sizes.get(s["symbol"]) <= max_lot_size]
-            if max_percentage and max_percentage > 0:
-                s_stocks = [s for s in s_stocks if abs(s["pchange"]) <= max_percentage]
-
+            s_stocks = _filter_sector_stocks(s_info["stocks"])
             top_s = sorted(s_stocks, key=lambda x: _stock_rank_key(x, not left_is_gain), reverse=True)[:stocks_per_sector]
             for stk in top_s:
                 sym = stk['symbol']
@@ -1233,7 +1444,7 @@ def run_scanner(
             pct_plain = fmt_pct(item["pchange"])
             in_fut  = sym in active_fut_symbols
             fut_str = "+" if in_fut else " "
-            row = f"   {sym:<10} {pct_plain:>7} {vol_str:<17} {fut_str}  [*]"
+            row = f"   {sym:<10} {pct_plain:>7} {vol_str:<17} {fut_str} [*]"
             left_opt_block.append(f"{row:<{COL_WIDTH}}")
 
         for item in right_opt_stocks:
@@ -1244,7 +1455,7 @@ def run_scanner(
             pct_plain = fmt_pct(item["pchange"])
             in_fut  = sym in active_fut_symbols
             fut_str = "+" if in_fut else " "
-            row = f"   {sym:<10} {pct_plain:>7} {vol_str:<17} {fut_str}  [*]"
+            row = f"   {sym:<10} {pct_plain:>7} {vol_str:<17} {fut_str} [*]"
             right_opt_block.append(f"{row:<{COL_WIDTH}}")
 
         max_opt = max(len(left_opt_block), len(right_opt_block))
@@ -1254,8 +1465,8 @@ def run_scanner(
             _print_dual_row(l_line, r_line)
 
     print(SEP_MID)
-    print(f"Legend: {_GRN}[*]{_RST} Top Active Option   {_YEL}[~]{_RST} Standard F&O Option   {_CYN}+{_RST} Active Futures   {_GRN}O=L{_RST} Open≈Low   {_RED}O=H{_RST} Open≈High")
-    print(SEP_LINE)
+    print(f"Legend: {_GRN}[*]{_RST} Top Active Option   {_YEL}[~]{_RST} Standard F&O Option   {_DIM}[·]{_RST} No option data in snapshot   {_CYN}+{_RST} Active Futures   {_GRN}O=L{_RST} Open≈Low   {_RED}O=H{_RST} Open≈High   {_YEL}L{_RST}+x.x % above day low   {_CYN}B{_RST}+x.xx futures basis vs spot (neg=discount, -- = n/a)")
+
 
     # 9. DB writes happen AFTER display so terminal output is instant
     conn = init_db(DB_FILE)
@@ -1263,53 +1474,99 @@ def run_scanner(
     db_save_nifty(conn, scan_id, nifty_ltp, nifty_change, nifty_dir, timestamp)
 
     total_fno_stocks_saved = 0
-    for s_name, s_info in sectors_data.items():
-        db_save_sector(conn, scan_id, s_name, s_info["change"])
-        for stk in s_info["stocks"]:
-            db_save_stock(
-                conn,
-                scan_id=scan_id,
-                sector_name=s_name,
-                symbol=stk["symbol"],
-                stock_name=stk["company_name"],
-                ltp=stk["ltp"],
-                change_pct=stk["pchange"],
-                is_fno=True,
-                ts=timestamp,
-                lot_size=lot_sizes.get(stk["symbol"]),
-                open_price=stk.get("open_price"),
-                day_high=stk.get("day_high"),
-                day_low=stk.get("day_low"),
-            )
-            total_fno_stocks_saved += 1
-
     total_active_futures_saved = 0
+
+    # Build all rows first, then insert everything in one executemany batch per
+    # table inside a single transaction (one fsync instead of one per row).
+    sector_rows = []
+    stock_rows = []
+    for s_name, s_info in sectors_data.items():
+        sector_rows.append((scan_id, s_name, s_info["change"]))
+        for stk in s_info["stocks"]:
+            dl = float(stk.get("day_low") or 0)
+            ext_low = ((stk["ltp"] - dl) / dl * 100.0) if (dl > 0 and stk["ltp"]) else None
+            stock_rows.append((
+                scan_id, s_name, stk["symbol"], stk["company_name"],
+                stk["ltp"], stk["pchange"], 1,
+                lot_sizes.get(stk["symbol"]),
+                stk.get("open_price"), stk.get("day_high"), stk.get("day_low"),
+                ext_low, fut_basis_map.get(stk["symbol"]),
+                timestamp,
+            ))
+    total_fno_stocks_saved = len(stock_rows)
+
+    # Active futures: one pass over both lists; a contract appearing in both is
+    # saved once, under "volume" (shared identifier dedup)
+    future_rows = []
     seen_identifiers = set()
-
-    for contract in active_futures.get("volume", []):
-        c_id = contract.get("identifier") or (contract.get("underlying", "") + contract.get("expiryDate", ""))
-        if c_id not in seen_identifiers:
+    for sort_by in ("volume", "value"):
+        for contract in active_futures.get(sort_by, []):
+            c_id = contract.get("identifier") or (contract.get("underlying", "") + contract.get("expiryDate", ""))
+            if c_id in seen_identifiers:
+                continue
             seen_identifiers.add(c_id)
             u_sym = contract.get("underlying", "").strip().upper()
-            db_save_active_future(conn, scan_id, contract, sort_by="volume", ts=timestamp, lot_size=lot_sizes.get(u_sym))
-            total_active_futures_saved += 1
+            future_rows.append((
+                scan_id,
+                u_sym,
+                contract.get("instrument", ""),
+                contract.get("expiryDate", ""),
+                float(contract.get("lastPrice", 0) or 0),
+                float(contract.get("pChange", 0) or 0),
+                int(contract.get("numberOfContractsTraded", 0) or 0),
+                float(contract.get("totalTurnover", 0) or 0),
+                int(contract.get("openInterest", 0) or 0),
+                float(contract.get("underlyingValue", 0) or 0),
+                sort_by,
+                lot_sizes.get(u_sym),
+                timestamp,
+            ))
+    total_active_futures_saved = len(future_rows)
 
-    for contract in active_futures.get("value", []):
-        c_id = contract.get("identifier") or (contract.get("underlying", "") + contract.get("expiryDate", ""))
-        if c_id not in seen_identifiers:
-            seen_identifiers.add(c_id)
-            u_sym = contract.get("underlying", "").strip().upper()
-            db_save_active_future(conn, scan_id, contract, sort_by="value", ts=timestamp, lot_size=lot_sizes.get(u_sym))
-            total_active_futures_saved += 1
+    # Active options (both Call and Put) with contract strike details
+    option_rows = []
+    for option_map, opt_type in ((call_opt_map, "Call"), (put_opt_map, "Put")):
+        for opt_sym, opt_data in option_map.items():
+            contracts = opt_data.get("contracts", [])
+            if contracts:
+                for ct in contracts:
+                    option_rows.append((
+                        scan_id, opt_sym, opt_type, ct["vol"],
+                        opt_data["contracts_count"],
+                        ct["strike"], ct["ltp"], ct["expiry"], ct["oi"], ct.get("spot"),
+                        timestamp,
+                    ))
+            else:
+                option_rows.append((
+                    scan_id, opt_sym, opt_type, opt_data["volume"],
+                    opt_data["contracts_count"],
+                    None, None, None, None, None,
+                    timestamp,
+                ))
 
-    # Save active options (both Call and Put)
-    for opt_sym, opt_data in call_opt_map.items():
-        db_save_active_option(conn, scan_id, opt_sym, "Call", opt_data["volume"], timestamp, opt_data["contracts_count"])
-    for opt_sym, opt_data in put_opt_map.items():
-        db_save_active_option(conn, scan_id, opt_sym, "Put", opt_data["volume"], timestamp, opt_data["contracts_count"])
-
-    # Single commit for all rows — much faster than one commit per row
-    conn.commit()
+    conn.executemany("INSERT INTO sectors (scan_id, sector_name, change_pct) VALUES (?, ?, ?);", sector_rows)
+    conn.executemany(
+        """INSERT INTO stocks
+           (scan_id, sector_name, symbol, stock_name, ltp, change_pct, is_fno, lot_size,
+            open_price, day_high, day_low, ext_from_low, fut_basis, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+        stock_rows,
+    )
+    conn.executemany(
+        """INSERT INTO active_futures
+           (scan_id, symbol, instrument, expiry_date, ltp, change_pct, volume_contracts,
+            value_lakhs, open_interest, underlying_value, sort_by, lot_size, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+        future_rows,
+    )
+    conn.executemany(
+        """INSERT INTO active_options
+           (scan_id, symbol, option_type, volume_contracts, strikes_count,
+            strike_price, option_ltp, expiry_date, open_interest, underlying_value, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+        option_rows,
+    )
+    conn.commit()  # single transaction for the whole scan's data
 
     update_terminal_summary_view(
         conn,
@@ -1318,6 +1575,27 @@ def run_scanner(
         stocks_per_sector=stocks_per_sector,
         active_futures_count=active_futures_count
     )
+
+    # Save current config to DB so scanner.html is always in sync
+    # (rewrite only keys whose value actually changed)
+    cfg_to_sync = load_scanner_config()
+    existing_cfg = dict(conn.execute("SELECT key, value FROM app_config;").fetchall())
+    changed_cfg = []
+    for ck, cv in cfg_to_sync.items():
+        encoded = json.dumps(cv)
+        if existing_cfg.get(ck) != encoded:
+            changed_cfg.append((ck, encoded, timestamp))
+    if changed_cfg:
+        conn.executemany(
+            "INSERT OR REPLACE INTO app_config (key, value, updated_at) VALUES (?, ?, ?);",
+            changed_cfg,
+        )
+        conn.commit()
+
+    # Update scan row with execution duration
+    elapsed_sec = time.time() - start_time
+    conn.execute("UPDATE scans SET duration_seconds = ? WHERE scan_id = ?;", (elapsed_sec, scan_id))
+    conn.commit()
 
     conn.close()
 
@@ -1330,36 +1608,21 @@ def run_scanner(
             pass
 
     # print()
-    print("DATABASE")
-    print(SEP_LINE)
+    # print("DATABASE")
+    # print(SEP_LINE)
+    # # print()
+    # print(f"Sectors found       : {total_sectors_found}")
+    # print(f"F&O sectors         : {total_fno_sectors}")
+    # print(f"F&O stocks          : {total_fno_stocks_saved}")
+    # print(f"Active futures saved: {total_active_futures_saved}")
     # print()
-    print(f"Sectors found       : {total_sectors_found}")
-    print(f"F&O sectors         : {total_fno_sectors}")
-    print(f"F&O stocks          : {total_fno_stocks_saved}")
-    print(f"Active futures saved: {total_active_futures_saved}")
-    print()
     elapsed_sec = time.time() - start_time
     print(f"STATUS: SUCCESS, Time Taken : {elapsed_sec:.2f} seconds")
     # print(f"Time taken          : {elapsed_sec:.2f} seconds")
     print(SEP_DOUBLE)
 
 if __name__ == "__main__":
-    # =========================================================================
-    # QUICK CONTROLS (Edit here directly — press Ctrl+End to reach in 1 second)
-    # =========================================================================
-    MAX_LOT_SIZE         = 1500  # Show stocks having lot size <= this value (None or 0 to show all)
-    STOCKS_PER_SECTOR    = 2    # Number of top constituent stocks to display for each sector
-    SECTORS_TO_SHOW      = 2     # Number of top gaining/losing sectors to display (each side)
-    ACTIVE_FUTURES_COUNT = 5     # Number of active stock futures to display in gainers/losers
-    MIN_OPTION_VOLUME    = 500   # 👍 if stock option contracts traded >= this, else 👎 (0 to disable)
-    MAX_PERCENTAGE       = 5.0   # Filter stocks with |change%| > this from sector lists (0 to disable)
-
-    run_scanner(
-        max_lot_size=MAX_LOT_SIZE,
-        stocks_per_sector=STOCKS_PER_SECTOR,
-        sectors_to_show=SECTORS_TO_SHOW,
-        active_futures_count=ACTIVE_FUTURES_COUNT,
-        min_option_volume=MIN_OPTION_VOLUME,
-        max_percentage=MAX_PERCENTAGE
-    )
+    # All scan tuning lives in scanner_config.json - the single master config
+    # shared with best_stock.py, view_scan_history.py, and scanner.html.
+    run_scanner()
     

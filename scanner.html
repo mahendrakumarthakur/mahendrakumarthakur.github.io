@@ -1041,7 +1041,8 @@ body {
 .badge-ol   { background: rgba(16, 185, 129, 0.18); color: var(--green); border: 1px solid var(--green); box-shadow: 0 0 6px rgba(16, 185, 129, 0.25); font-weight: 800; }
 .badge-oh   { background: rgba(239, 68, 68, 0.18); color: var(--red); border: 1px solid var(--red); box-shadow: 0 0 6px rgba(239, 68, 68, 0.25); font-weight: 800; }
 .badge-ext  { background: rgba(245, 158, 11, 0.18); color: var(--yellow, #f59e0b); border: 1px solid var(--yellow, #f59e0b); box-shadow: 0 0 6px rgba(245, 158, 11, 0.3); font-weight: 800; }
-.badge-noopt { background: rgba(248, 81, 73, 0.10); color: var(--red); border: 1px dashed rgba(248, 81, 73, 0.55); font-weight: 700; letter-spacing: .02em; }
+.badge-nodata { background: var(--bg4); color: var(--text3); border: 1px solid rgba(255, 255, 255, 0.10); font-weight: 600; }
+.badge-preopen { background: rgba(227, 179, 65, 0.14); color: var(--yellow); border: 1px dashed var(--yellow); font-weight: 700; letter-spacing: .02em; }
 
 /* =====================================================================
    Futures table
@@ -1883,7 +1884,7 @@ kbd {
       <input type="number" id="cfg-lotsize" value="1500" min="0" oninput="onConfigChange('cfg-lotsize')" onchange="onConfigChange('cfg-lotsize')"/>
     </div>
     <div class="filter-item">
-      <label>Min Option Vol <span class="filter-hint">([*] threshold)</span></label>
+      <label>Min Option Vol <span class="filter-hint">([*] marker only · never filters)</span></label>
       <input type="number" id="cfg-optvolume" value="500" min="0" oninput="onConfigChange('cfg-optvolume')" onchange="onConfigChange('cfg-optvolume')"/>
     </div>
     <div class="filter-item">
@@ -3034,7 +3035,7 @@ function stockBadges(stk, activeFutSet, optLiqMap, minOptVol) {
   if (hasFut)   html += `<span class="badge badge-fut" title="Active Futures">+FUT</span> `;
   if (isTopOpt) html += `<span class="badge badge-opt" title="Top Active Option (vol ${fmtVol(optVol)})">[*]</span> `;
   else if (isFnoOpt) html += `<span class="badge badge-fno" title="F&O Option, below the ${fmtVol(minOptVol)} volume threshold (vol ${fmtVol(optVol)})">[~]</span> `;
-  else html += `<span class="badge badge-noopt" title="No option activity in this scan's snapshot — thin book, wide spreads, slippage on entry/exit. Not scalp-able.">[--]</span> `;
+  else html += `<span class="badge badge-nodata" title="No option data for this stock in this scan\'s snapshot. NSE\'s most-active list carries only ~40 stock-option rows, so this means \'no reading\' — not proof of illiquidity.">[·]</span> `;
   return html;
 }
 
@@ -3222,7 +3223,7 @@ function stockTier(sym, activeFutSet, optLiqMap, minOptVol) {
 /* ────────────────────────────────────────────
    Best Stock Scoring & Selection (from best_stock.py)
    ──────────────────────────────────────────── */
-function computeBestStock(db, scanId, niftyChange, maxLot, maxPct, visibleSymbols, minOptVol) {
+function computeBestStock(db, scanId, niftyChange, maxLot, maxPct, visibleSymbols) {
   let hasOHL = false;
   try {
     const colInfo = db.exec("PRAGMA table_info(stocks);");
@@ -3336,16 +3337,10 @@ function computeBestStock(db, scanId, niftyChange, maxLot, maxPct, visibleSymbol
     });
   } catch(e) {}
 
-  // Option-liquidity gate: the pick must clear the same MIN OPTION VOL ([*])
-  // threshold that the screen uses. No option volume -> not tradable -> not pickable.
-  if (minOptVol && minOptVol > 0) {
-    Object.keys(stocks).forEach(sym => {
-      const o = optMap[sym];
-      const vol = o ? (o.Call || 0) + (o.Put || 0) : 0;
-      if (vol < minOptVol) delete stocks[sym];
-    });
-    if (!Object.keys(stocks).length) return null;
-  }
+  // Option volume is DISPLAY-ONLY (the [*] / [~] / [·] markers). It must never
+  // gate the pick: NSE's most-active list carries only ~40 stock-option rows out
+  // of 210, so a missing reading says nothing about a stock's option liquidity.
+  const hasOptData = Object.keys(optMap).length > 0;
 
   function pickBestSector(sectors, stockChange) {
     if (!sectors || !sectors.length) return { name: '—', change: 0 };
@@ -3630,6 +3625,7 @@ function computeBestStock(db, scanId, niftyChange, maxLot, maxPct, visibleSymbol
     best,
     bestDir,
     strikeRec,
+    preopen: !hasOptData,
     bullishTop: bullish.slice(0, 3),
     bearishTop: bearish.slice(0, 3),
     sectorPicks: Object.entries(sectorBest)
@@ -3713,6 +3709,9 @@ function renderTopPick(bestStockInfo) {
     else if (b.ohlc_signal < 0) bHtml += `<span class="badge badge-oh" title="Open ≈ High (Bearish)">❄️ O=H</span>`;
     if (b.ext !== null && b.ext !== undefined && b.ext > (unifiedConfig.ext_penalty_start || 0.02) && b.change > 0) {
       bHtml += `<span class="badge badge-ext" title="Extended +${(b.ext * 100).toFixed(1)}% from open — chase risk, score scaled to ${b.ext_factor}×">⚠ EXT +${(b.ext * 100).toFixed(1)}%</span>`;
+    }
+    if (bestStockInfo.preopen) {
+      bHtml += `<span class="badge badge-preopen" title="Pre-open scan (before 9:15): the derivative feed carries no option data yet, so option liquidity could NOT be verified. Re-check on the 9:15+ scan before trading.">PRE-OPEN · unconfirmed</span>`;
     }
     badgesEl.innerHTML = bHtml;
   }
@@ -3974,7 +3973,7 @@ function rerender() {
       .slice(0, cfgObj.stocksPerSector)
       .forEach(s => visiblePickSymbols.add(s.symbol));
   });
-  const bestStockInfo = computeBestStock(db, scanId, niftyChange, cfgObj.maxLot, cfgObj.maxPct, visiblePickSymbols, cfgObj.minOptVol);
+  const bestStockInfo = computeBestStock(db, scanId, niftyChange, cfgObj.maxLot, cfgObj.maxPct, visiblePickSymbols);
   renderTopPick(bestStockInfo);
 
   const sectorPickMap = Object.fromEntries((bestStockInfo?.sectorPicks || []).map(pick => [pick.sector, pick]));

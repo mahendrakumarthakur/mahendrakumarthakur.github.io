@@ -11,6 +11,7 @@ Allows you to:
 """
 
 import sqlite3
+import json
 import os
 import sys
 
@@ -21,8 +22,44 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-# Database file location (same directory)
-DB_FILE = "market_scanner.db"
+# -----------------------------------------------------------------------------
+# Configuration (unified via scanner_config.json)
+# -----------------------------------------------------------------------------
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanner_config.json")
+
+def load_scanner_config():
+    defaults = {
+        "max_lot_size": 1500,
+        "sectors_to_show": 2,
+        "stocks_per_sector": 10,
+        "active_futures_count": 10,
+        "min_option_volume": 500,
+        "max_percentage": 0.0,
+        "top_n_candidates": 3,
+        "weights": {
+            "price": 3.0,
+            "sector": 2.0,
+            "options": 2.0,
+            "futures": 1.5,
+            "ohlc": 1.0
+        },
+        "db_file": "market_scanner.db"
+    }
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                defaults.update(cfg)
+                if "weights" in cfg and isinstance(cfg["weights"], dict):
+                    defaults["weights"].update(cfg["weights"])
+        except Exception as e:
+            print(f"[!] Warning reading {CONFIG_FILE}: {e}")
+    return defaults
+
+_CFG = load_scanner_config()
+
+# Database file location
+DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), _CFG.get("db_file", "market_scanner.db"))
 
 # ANSI Colors
 _GRN = "\033[92m"   # bright green  (positive % / Top Active Options)
@@ -31,13 +68,13 @@ _YEL = "\033[93m"   # bright yellow (Standard F&O Options)
 _CYN = "\033[96m"   # bright cyan   (Active Futures)
 _RST = "\033[0m"    # reset
 
-# Default display filters (can be configured at bottom in if __name__ == '__main__')
-DEFAULT_MAX_LOT_SIZE         = 1500
-DEFAULT_STOCKS_PER_SECTOR    = 10
-DEFAULT_SECTORS_TO_SHOW      = 2    # Number of top gaining/losing sectors to display
-DEFAULT_ACTIVE_FUTURES_COUNT = 5
-DEFAULT_MIN_OPTION_VOLUME    = 500
-DEFAULT_MAX_PERCENTAGE       = 0.0   # Filter out stocks with |change%| > this (0 = no filter)
+# Default display filters (loaded from scanner_config.json)
+DEFAULT_MAX_LOT_SIZE         = _CFG.get("max_lot_size", 1500)
+DEFAULT_STOCKS_PER_SECTOR    = _CFG.get("stocks_per_sector", 10)
+DEFAULT_SECTORS_TO_SHOW      = _CFG.get("sectors_to_show", 2)
+DEFAULT_ACTIVE_FUTURES_COUNT = _CFG.get("active_futures_count", 10)
+DEFAULT_MIN_OPTION_VOLUME    = _CFG.get("min_option_volume", 500)
+DEFAULT_MAX_PERCENTAGE       = float(_CFG.get("max_percentage", 0.0))
 
 
 def fmt_pct(val: float) -> str:
@@ -45,6 +82,30 @@ def fmt_pct(val: float) -> str:
     if val is None:
         return "0.00%"
     return f"+{val:.2f}%" if val >= 0 else f"{val:.2f}%"
+
+
+def is_ohlc_data_reliable(stocks: list, bad_fraction_limit: float = 0.10) -> bool:
+    """Reject scan-wide OHLC signals when too many rows are flat or unusable."""
+    by_symbol = {}
+    for stk in stocks:
+        symbol = str(stk.get("symbol", "")).strip().upper()
+        if symbol:
+            by_symbol.setdefault(symbol, stk)
+
+    if not by_symbol:
+        return False
+
+    bad_count = 0
+    for stk in by_symbol.values():
+        op = float(stk.get("open_price") or 0)
+        high = float(stk.get("day_high") or 0)
+        low = float(stk.get("day_low") or 0)
+        if op <= 0 or high <= 0 or low <= 0 or high < op or low > op or high < low:
+            bad_count += 1
+        elif high - low <= 0.01:
+            bad_count += 1
+
+    return bad_count / len(by_symbol) < bad_fraction_limit
 
 
 def get_db_connection(db_path: str = DB_FILE) -> sqlite3.Connection:
@@ -162,9 +223,13 @@ def render_scan(
             "day_low": float(st["day_low"] or 0)
         })
 
+    ohlc_data_reliable = is_ohlc_data_reliable(
+        [stk for stocks in sector_stocks.values() for stk in stocks]
+    )
+
     # 5. Active Futures
     af_rows = cur.execute("""
-        SELECT symbol, instrument, change_pct, ltp, volume_contracts, lot_size
+        SELECT symbol, instrument, change_pct, ltp, volume_contracts, lot_size, underlying_value
         FROM active_futures
         WHERE scan_id = ? AND instrument = 'Stock Futures'
         ORDER BY volume_contracts DESC
@@ -173,9 +238,14 @@ def render_scan(
     seen_af = set()
     stock_futures = []
     active_fut_symbols = set()
+    fut_basis_map = {}   # symbol -> futures premium(+)/discount(-) vs spot, %
     for af in af_rows:
         sym = af["symbol"].strip().upper()
         active_fut_symbols.add(sym)
+        fut_ltp = float(af["ltp"] or 0)
+        und_val = float(af["underlying_value"] or 0)
+        if fut_ltp > 0 and und_val > 0 and sym not in fut_basis_map:
+            fut_basis_map[sym] = (fut_ltp - und_val) / und_val * 100.0
         if sym not in seen_af:
             seen_af.add(sym)
             lot = af["lot_size"] or lot_sizes.get(sym)
@@ -210,22 +280,24 @@ def render_scan(
             otype = (op["option_type"] or "").strip().title()
             vol   = int(op["volume_contracts"] or 0)
             cnt   = int(op["strikes_count"] or 1)
+            # NOTE: strikes_count is stored on every per-strike row of the same
+            # scan, so it must be MAX-ed (not summed) or it inflates per row.
             if otype == "Call":
                 if sym not in call_opt_map:
                     call_opt_map[sym] = {"volume": 0, "contracts_count": 0}
                 call_opt_map[sym]["volume"] += vol
-                call_opt_map[sym]["contracts_count"] += cnt
+                call_opt_map[sym]["contracts_count"] = max(call_opt_map[sym]["contracts_count"], cnt)
             elif otype == "Put":
                 if sym not in put_opt_map:
                     put_opt_map[sym] = {"volume": 0, "contracts_count": 0}
                 put_opt_map[sym]["volume"] += vol
-                put_opt_map[sym]["contracts_count"] += cnt
+                put_opt_map[sym]["contracts_count"] = max(put_opt_map[sym]["contracts_count"], cnt)
             else:
                 # Fallback for older scans where option_type might be different or unspecified
                 if sym not in call_opt_map:
                     call_opt_map[sym] = {"volume": 0, "contracts_count": 0}
                 call_opt_map[sym]["volume"] += vol
-                call_opt_map[sym]["contracts_count"] += cnt
+                call_opt_map[sym]["contracts_count"] = max(call_opt_map[sym]["contracts_count"], cnt)
 
             # Overall liquidity map for [*] marker (or matching nifty_dir)
             opt_liq_map[sym] = max(opt_liq_map.get(sym, 0), vol)
@@ -257,7 +329,7 @@ def render_scan(
     top_active_puts  = sorted(raw_active_puts, key=lambda x: x["pchange"])
 
     # --- RENDER TERMINAL GRID ---
-    COL_WIDTH  = 48
+    COL_WIDTH  = 58   # widened for the L (ext-from-low) and B (futures basis) columns
     GRID_WIDTH = COL_WIDTH * 2 + 3
     SEP_DOUBLE = "=" * GRID_WIDTH
     SEP_MID    = "-" * COL_WIDTH + "-+-" + "-" * COL_WIDTH
@@ -270,7 +342,7 @@ def render_scan(
     print(SEP_DOUBLE)
 
     import re as _re
-    _PCT_RE = _re.compile(r'([+-]\d+\.\d+%)')
+    _PCT_RE = _re.compile(r'([+-]\d+\.\d+%?)')
 
     def _cpct(val: float) -> str:
         """Return a colour-coded percentage string: green if >=0, red if <0."""
@@ -310,16 +382,28 @@ def render_scan(
             op = target_stk.get("open_price") or 0
             dh = target_stk.get("day_high") or 0
             dl = target_stk.get("day_low") or 0
-            if op > 0 and dl > 0 and pchange > 0 and dl <= op:
+            if ohlc_data_reliable and dh > dl and op > 0 and dl > 0 and pchange > 0 and dl <= op:
                 wick = (op - dl) / op * 100
                 if wick <= 0.15:
                     ohl_str = "O=L"
-            elif op > 0 and dh > 0 and pchange < 0 and dh >= op:
+            elif ohlc_data_reliable and dh > dl and op > 0 and dh > 0 and pchange < 0 and dh >= op:
                 wick = (dh - op) / op * 100
                 if wick <= 0.15:
                     ohl_str = "O=H"
 
-        row = f"   {sym:<10} {pct_plain:>7}  {ohl_str}  {lot_str:<9}  {fut_str}  {opt_str}"
+        # L = % extension above day low (chase-risk gauge), B = futures basis vs spot
+        ext_str   = "L--"
+        basis_str = "B--"
+        if target_stk:
+            m_lo = float(target_stk.get("day_low") or 0)
+            m_lt = float(target_stk.get("ltp") or 0)
+            if m_lo > 0 and m_lt > 0:
+                ext_str = f"L{(m_lt - m_lo) / m_lo * 100.0:+.1f}"
+        if sym in fut_basis_map:
+            b_val = fut_basis_map[sym]
+            basis_str = f"B{b_val:+.2f}" if abs(b_val) >= 0.005 else "B 0.00"
+
+        row = f"   {sym:<10} {pct_plain:>7}  {ohl_str} {ext_str:<6} {basis_str:<7} {lot_str:<9} {fut_str} {opt_str}"
         return f"{row:<{col_w}}"
 
     def _print_dual_row(l_str: str, r_str: str):
@@ -328,10 +412,10 @@ def render_scan(
         # Colorize percentage values
         pl = _colorize_pct(pl)
         pr = _colorize_pct(pr)
-        pl = pl.replace("  O=L  ", f"  {_GRN}O=L{_RST}  ").replace("  O=H  ", f"  {_RED}O=H{_RST}  ")
-        pr = pr.replace("  O=L  ", f"  {_GRN}O=L{_RST}  ").replace("  O=H  ", f"  {_RED}O=H{_RST}  ")
-        pl = pl.replace("  +  ", f"  {_CYN}+{_RST}  ")
-        pr = pr.replace("  +  ", f"  {_CYN}+{_RST}  ")
+        pl = pl.replace(" O=L ", f" {_GRN}O=L{_RST} ").replace(" O=H ", f" {_RED}O=H{_RST} ")
+        pr = pr.replace(" O=L ", f" {_GRN}O=L{_RST} ").replace(" O=H ", f" {_RED}O=H{_RST} ")
+        pl = pl.replace(" + ", f" {_CYN}+{_RST} ")
+        pr = pr.replace(" + ", f" {_CYN}+{_RST} ")
         pl = pl.replace("[*]", f"{_GRN}[*]{_RST}").replace("[~]", f"{_YEL}[~]{_RST}")
         pr = pr.replace("[*]", f"{_GRN}[*]{_RST}").replace("[~]", f"{_YEL}[~]{_RST}")
         print(f"{pl} | {pr}")
@@ -388,7 +472,7 @@ def render_scan(
             if max_lot_size and max_lot_size > 0:
                 s_stocks = [s for s in s_stocks if s["lot_size"] and s["lot_size"] <= max_lot_size]
             if max_percentage and max_percentage > 0:
-                s_stocks = [s for s in s_stocks if abs(s["pchange"]) <= max_percentage]
+                s_stocks = [s for s in s_stocks if abs(s["pchange"]) < max_percentage]
             # Rank priority:
             # Tier 3: both Active Futures (+) and Top Active Option ([*])
             # Tier 2: Active Futures (+) only
@@ -426,7 +510,7 @@ def render_scan(
             if max_lot_size and max_lot_size > 0:
                 s_stocks = [s for s in s_stocks if s["lot_size"] and s["lot_size"] <= max_lot_size]
             if max_percentage and max_percentage > 0:
-                s_stocks = [s for s in s_stocks if abs(s["pchange"]) <= max_percentage]
+                s_stocks = [s for s in s_stocks if abs(s["pchange"]) < max_percentage]
 
             top_s = sorted(s_stocks, key=lambda x: _stock_rank_key(x, not left_is_gain), reverse=True)[:stocks_per_sector]
             for stk in top_s:
@@ -479,7 +563,7 @@ def render_scan(
             pct_plain = fmt_pct(item["pchange"])
             in_fut    = sym in active_fut_symbols
             fut_str   = "+" if in_fut else " "
-            row = f"   {sym:<10} {pct_plain:>7} {vol_str:<17} {fut_str}  [*]"
+            row = f"   {sym:<10} {pct_plain:>7} {vol_str:<17} {fut_str} [*]"
             left_opt_block.append(f"{row:<{COL_WIDTH}}")
 
         for item in right_opt_stocks:
@@ -490,7 +574,7 @@ def render_scan(
             pct_plain = fmt_pct(item["pchange"])
             in_fut    = sym in active_fut_symbols
             fut_str   = "+" if in_fut else " "
-            row = f"   {sym:<10} {pct_plain:>7} {vol_str:<17} {fut_str}  [*]"
+            row = f"   {sym:<10} {pct_plain:>7} {vol_str:<17} {fut_str} [*]"
             right_opt_block.append(f"{row:<{COL_WIDTH}}")
 
         max_opt = max(len(left_opt_block), len(right_opt_block))
@@ -500,7 +584,7 @@ def render_scan(
             _print_dual_row(l_line, r_line)
 
     print(SEP_MID)
-    print(f"Legend: {_GRN}[*]{_RST} Top Active Option   {_YEL}[~]{_RST} Standard F&O Option   {_CYN}+{_RST} Active Futures   {_GRN}O=L{_RST} Open≈Low   {_RED}O=H{_RST} Open≈High")
+    print(f"Legend: {_GRN}[*]{_RST} Top Active Option   {_YEL}[~]{_RST} Standard F&O Option   {_CYN}+{_RST} Active Futures   {_GRN}O=L{_RST} Open≈Low   {_RED}O=H{_RST} Open≈High   {_YEL}L{_RST}+x.x % above day low   {_CYN}B{_RST}+x.xx futures basis vs spot (neg=discount, -- = n/a)")
     print(SEP_LINE)
 
     # Database Summary block
@@ -691,14 +775,15 @@ def main(
 
 if __name__ == "__main__":
     # =========================================================================
-    # QUICK CONTROLS (Edit here directly — press Ctrl+End to reach in 1 second)
+    # QUICK CONTROLS (Now unified via scanner_config.json)
     # =========================================================================
-    MAX_LOT_SIZE         = 1500  # Show stocks having lot size <= this value (None or 0 to show all)
-    STOCKS_PER_SECTOR    = 10    # Number of top constituent stocks to display for each sector
-    SECTORS_TO_SHOW      = 2     # Number of top gaining/losing sectors to display (each side)
-    ACTIVE_FUTURES_COUNT = 5     # Number of active stock futures to display in gainers/losers
-    MIN_OPTION_VOLUME    = 500   # [*] if stock option contracts >= this, else [~]
-    MAX_PERCENTAGE       = 5.0   # Filter stocks with |change%| > this from sector lists (0 to disable)
+    cfg = load_scanner_config()
+    MAX_LOT_SIZE         = cfg.get("max_lot_size", 1500)
+    STOCKS_PER_SECTOR    = cfg.get("stocks_per_sector", 10)
+    SECTORS_TO_SHOW      = cfg.get("sectors_to_show", 2)
+    ACTIVE_FUTURES_COUNT = cfg.get("active_futures_count", 10)
+    MIN_OPTION_VOLUME    = cfg.get("min_option_volume", 500)
+    MAX_PERCENTAGE       = float(cfg.get("max_percentage", 0.0))
 
     main(
         max_lot_size=MAX_LOT_SIZE,
