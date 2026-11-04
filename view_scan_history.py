@@ -132,9 +132,13 @@ def fetch_scan_dates(conn: sqlite3.Connection) -> list:
 def fetch_scans_for_date(conn: sqlite3.Connection, scan_date: str) -> list:
     """Fetch all scans for a specific date with Nifty summary, latest first."""
     cur = conn.cursor()
-    rows = cur.execute("""
+    # scans.partial (schema v3) may be absent in old databases - guard the column.
+    has_partial = cur.execute(
+        "SELECT COUNT(*) FROM pragma_table_info('scans') WHERE name = 'partial';"
+    ).fetchone()[0] > 0
+    rows = cur.execute(f"""
         SELECT s.scan_id, s.scan_date, s.scan_time, s.data_source,
-               n.ltp, n.change_pct, n.direction
+               n.ltp, n.change_pct, n.direction{', s.partial' if has_partial else ''}
         FROM scans s
         LEFT JOIN nifty n ON s.scan_id = n.scan_id
         WHERE s.scan_date = ?
@@ -597,7 +601,8 @@ def render_scan(
     print(SEP_LINE)
     print()
     print(f"Scan ID             : #{scan_id}")
-    print(f"Scan Timestamp      : {scan_date} {scan_time}")
+    pflag = "   [⚠ PARTIAL - sector data truncated]" if ('partial' in scan_row.keys() and scan_row['partial']) else ""
+    print(f"Scan Timestamp      : {scan_date} {scan_time}{pflag}")
     print(f"Sectors in DB       : {total_sectors}")
     print(f"F&O stocks in DB    : {total_stocks}")
     print(f"Active futures in DB: {total_af}")
@@ -700,7 +705,8 @@ def main(
                     nifty_summary = f"NIFTY: {n_ltp:,.2f} ({fmt_pct(n_chg)} {n_dir})"
                 else:
                     nifty_summary = "NIFTY: N/A"
-                print(f"  {idx:>2}. Scan #{s['scan_id']} at {s['scan_time']} | {nifty_summary}{tag}")
+                ptag = "  [PARTIAL]" if ('partial' in s.keys() and s['partial']) else ""
+                print(f"  {idx:>2}. Scan #{s['scan_id']} at {s['scan_time']} | {nifty_summary}{tag}{ptag}")
             print("-" * 70)
 
             choice_scan = input(f"Select scan [1-{len(scans)}] (Default: 1, 'b' for back, 'q' to quit, suffix 'd' to delete): ").strip()

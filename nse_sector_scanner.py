@@ -237,6 +237,24 @@ def safe_get(session: cffi_requests.Session, url: str):
 # NSE DATA FETCHERS
 # -----------------------------------------------------------------------------
 
+def _f(val, default: float = 0.0) -> float:
+    """Float conversion that survives NSE quirks: None, '', or '1,234.50' strings.
+
+    One malformed number must never raise inside a fetcher - it used to crash
+    the whole scan (worker re-raise), which is how the 2026-11-03 Actions run
+    died after fetching and then published an empty database.
+    """
+    if val in (None, ""):
+        return default
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        try:
+            return float(str(val).replace(",", ""))
+        except (TypeError, ValueError):
+            return default
+
+
 def fetch_all_indices(session: cffi_requests.Session) -> list:
     """
     Fetch https://www.nseindia.com/api/allIndices
@@ -311,9 +329,11 @@ def fetch_sector_constituents(session: cffi_requests.Session, query_symbol: str)
         return []
 
     stocks = []
-    # Row 0 is the index summary row; rows 1+ are constituent stocks
+    # Row 0 is the index summary row; rows 1+ are constituent stocks.
+    # _f() per row: a malformed value degrades that one field to 0 instead of
+    # raising inside the worker thread and aborting the whole scan.
     for item in rows[1:]:
-        sym = item.get("symbol", "").strip().upper()
+        sym = str(item.get("symbol") or "").strip().upper()
         if not sym:
             continue
         meta = item.get("meta") or {}
@@ -322,11 +342,11 @@ def fetch_sector_constituents(session: cffi_requests.Session, query_symbol: str)
         stocks.append({
             "symbol":       sym,
             "company_name": company_name,
-            "ltp":          float(item.get("lastPrice", 0) or 0),
-            "pchange":      float(item.get("pChange", 0) or 0),
-            "open_price":   float(item.get("open", 0) or 0),
-            "day_high":     float(item.get("dayHigh", 0) or 0),
-            "day_low":      float(item.get("dayLow", 0) or 0),
+            "ltp":          _f(item.get("lastPrice")),
+            "pchange":      _f(item.get("pChange")),
+            "open_price":   _f(item.get("open")),
+            "day_high":     _f(item.get("dayHigh")),
+            "day_low":      _f(item.get("dayLow")),
         })
     return stocks
 
@@ -511,7 +531,8 @@ SQL_SCHEMA = [
         scan_id     INTEGER PRIMARY KEY AUTOINCREMENT,
         scan_date   TEXT NOT NULL,
         scan_time   TEXT NOT NULL,
-        data_source TEXT NOT NULL
+        data_source TEXT NOT NULL,
+        partial     INTEGER NOT NULL DEFAULT 0
     );""",
     """CREATE TABLE IF NOT EXISTS nifty (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -771,8 +792,38 @@ def update_terminal_summary_view(
     conn.commit()
 
 
-SCHEMA_VERSION = 2  # bump when SQL_SCHEMA or migrations below change
+SCHEMA_VERSION = 3  # bump when SQL_SCHEMA or migrations below change
                       # v2: stocks gains ext_from_low + fut_basis columns
+                      # v3: scans gains partial flag (NSE open-window truncation)
+
+
+def _backfill_partial_flags(cur) -> None:
+    """Mark historical scans PARTIAL where the data says so (v3 backfill).
+
+    A scan is partial when (a) some sector row has zero constituent stocks, or
+    (b) its distinct-symbol count fell below 95% of the best of the previous 5
+    scans (catches under-filled blocks like scan #282's PSU BANK at 6 of 8).
+    """
+    cur.execute("""UPDATE scans SET partial = 1 WHERE scan_id IN (
+                       SELECT DISTINCT s.scan_id FROM scans s
+                       JOIN sectors se ON se.scan_id = s.scan_id
+                       LEFT JOIN stocks st
+                              ON st.scan_id = s.scan_id
+                             AND st.sector_name = se.sector_name
+                       GROUP BY s.scan_id, se.sector_name
+                       HAVING COUNT(st.id) = 0);""")
+    rows = cur.execute(
+        "SELECT scan_id, COUNT(DISTINCT symbol) FROM stocks GROUP BY scan_id ORDER BY scan_id;"
+    ).fetchall()
+    baseline: list = []
+    for scan_id, distinct in rows:
+        if baseline:
+            best = max(baseline)
+            if best >= 100 and distinct < best * 0.95:
+                cur.execute("UPDATE scans SET partial = 1 WHERE scan_id = ?;", (scan_id,))
+        baseline.append(distinct)
+        if len(baseline) > 5:
+            baseline.pop(0)
 
 
 def init_db(db_path: str) -> sqlite3.Connection:
@@ -836,6 +887,12 @@ def init_db(db_path: str) -> sqlite3.Connection:
     except sqlite3.OperationalError:
         pass  # column already exists
 
+    # Migration (v3): scans.partial flag (NSE open-window truncation / empty fetches)
+    try:
+        cur.execute("ALTER TABLE scans ADD COLUMN partial INTEGER NOT NULL DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
     # Drop views to recreate them with updated column definitions
     cur.execute("DROP VIEW IF EXISTS v_latest_stocks;")
     cur.execute("DROP VIEW IF EXISTS v_terminal_summary;")
@@ -847,6 +904,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
 
     for stmt in SQL_SCHEMA:
         cur.execute(stmt)
+    _backfill_partial_flags(cur)   # v3: mark historically truncated scans
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
     conn.commit()
 
@@ -854,10 +912,10 @@ def init_db(db_path: str) -> sqlite3.Connection:
 
 
 def db_save_scan(conn: sqlite3.Connection, scan_date: str, scan_time: str, data_source: str,
-                 duration_seconds: float = None) -> int:
+                 duration_seconds: float = None, partial: int = 0) -> int:
     cur = conn.execute(
-        "INSERT INTO scans (scan_date, scan_time, data_source, duration_seconds) VALUES (?, ?, ?, ?);",
-        (scan_date, scan_time, data_source, duration_seconds)
+        "INSERT INTO scans (scan_date, scan_time, data_source, duration_seconds, partial) VALUES (?, ?, ?, ?, ?);",
+        (scan_date, scan_time, data_source, duration_seconds, partial)
     )
     return cur.lastrowid
 
@@ -1064,6 +1122,7 @@ def run_scanner(
     #    4 concurrent threads reduce ~25s sequential wait to ~6-8s.
     SECTOR_WORKERS = 4
     sectors_data   = {}
+    empty_sectors  = []           # sectors whose fetch returned zero F&O rows
     total_sectors  = len(sector_entries)
     completed      = [0]          # mutable counter shared across threads
     lock           = threading.Lock()
@@ -1091,11 +1150,19 @@ def run_scanner(
                 pct = int((done / total_sectors) * 20)
                 bar = "#" * pct + "-" * (20 - pct)
                 print(f"\r    [{bar}] {done:>2}/{total_sectors}  {s_name:<40}", end="", flush=True)
-            if fno_stocks:
-                sectors_data[s_name] = {"change": s_change, "stocks": fno_stocks}
+            # Keep every sector, even one whose fetch came back empty: dropping it
+            # silently erased sectors from the DB (scans #282/#283 lost METAL,
+            # PHARMA and FINANCIAL SERVICES with no trace) and hid NSE open-window
+            # truncation from every viewer.
+            sectors_data[s_name] = {"change": s_change, "stocks": fno_stocks}
+            if not fno_stocks:
+                empty_sectors.append(s_name)
 
     print()  # newline after progress bar
 
+    if empty_sectors:
+        print(f"\n[!] WARNING: {len(empty_sectors)} sector(s) returned no F&O constituents: {', '.join(empty_sectors)}")
+        print("    Typical during the ~09:15-09:20 NSE feed rebuild - this scan will be marked PARTIAL.")
 
     total_fno_sectors = len(sectors_data)
 
@@ -1104,9 +1171,12 @@ def run_scanner(
     opt_liq_map, call_opt_map, put_opt_map = fetch_active_stock_options(session, nifty_dir)
     session.close()  # no more network I/O - release the TLS session
 
-    # 8. Sort sectors and compute top gainers/losers for display
+    # 8. Sort sectors and compute top gainers/losers for display.
+    #    Empty sectors (saved to the DB for the partial flag) stay out of the
+    #    terminal panels - a header with no stock rows would just displace a
+    #    real sector from the top slots.
     sorted_sectors = sorted(
-        sectors_data.items(),
+        ((name, info) for name, info in sectors_data.items() if info["stocks"]),
         key=lambda x: x[1]["change"],
         reverse=True
     )
@@ -1137,17 +1207,17 @@ def run_scanner(
     all_af = active_futures.get("volume", []) + active_futures.get("value", [])
     for c in all_af:
         inst = c.get("instrument", "")
-        sym = c.get("underlying", "").strip().upper()
+        sym = str(c.get("underlying") or "").strip().upper()
         if not sym:
             continue
         if inst == "Stock Futures":
             active_fut_symbols.add(sym)
-            fut_ltp = float(c.get("lastPrice", 0) or 0)
-            und_val = float(c.get("underlyingValue", 0) or 0)
+            fut_ltp = _f(c.get("lastPrice"))
+            und_val = _f(c.get("underlyingValue"))
             if fut_ltp > 0 and und_val > 0 and sym not in fut_basis_map:
                 fut_basis_map[sym] = (fut_ltp - und_val) / und_val * 100.0
         if sym not in sym_pct_lookup:
-            sym_pct_lookup[sym] = float(c.get("pChange", 0) or 0)
+            sym_pct_lookup[sym] = _f(c.get("pChange"))
         if inst == "Stock Futures" and sym not in seen_af_syms and sym not in fno_banned:
             seen_af_syms.add(sym)
             lot = lot_sizes.get(sym)
@@ -1156,9 +1226,9 @@ def run_scanner(
                     continue
             stock_futures.append({
                 "symbol": sym,
-                "pchange": float(c.get("pChange", 0) or 0),
-                "ltp": float(c.get("lastPrice", 0) or 0),
-                "volume": int(c.get("numberOfContractsTraded", 0) or 0),
+                "pchange": _f(c.get("pChange")),
+                "ltp": _f(c.get("lastPrice")),
+                "volume": int(_f(c.get("numberOfContractsTraded"))),
             })
 
     top_active_gainers = sorted(stock_futures, key=lambda x: x["pchange"], reverse=True)[:active_futures_count]
@@ -1470,7 +1540,25 @@ def run_scanner(
 
     # 9. DB writes happen AFTER display so terminal output is instant
     conn = init_db(DB_FILE)
-    scan_id = db_save_scan(conn, scan_date, scan_time, DATA_SOURCE)
+
+    # PARTIAL-SCAN DETECTION (P1): NSE rebuilds its index feed for a few minutes
+    # after the 09:15 open; scans inside that window have truncated sectors.
+    # Rule (a): any sector fetched zero F&O constituents this scan.
+    # Rule (b): distinct symbols < 95% of the best of the previous 5 scans
+    #           (catches under-filled blocks like #282's PSU BANK at 6 of 8,
+    #           where no sector was fully empty).
+    distinct_now = len({stk["symbol"] for info in sectors_data.values() for stk in info["stocks"]})
+    baseline = conn.execute(
+        """SELECT MAX(c) FROM (
+               SELECT COUNT(DISTINCT symbol) AS c
+               FROM stocks GROUP BY scan_id ORDER BY scan_id DESC LIMIT 5
+           );"""
+    ).fetchone()[0] or 0
+    partial = 1 if (empty_sectors or (baseline >= 100 and distinct_now < baseline * 0.95)) else 0
+    if partial:
+        print(f"\n[!] Scan marked PARTIAL (symbols this scan: {distinct_now}, recent baseline: {baseline}). Treat sector composition as indicative only.")
+
+    scan_id = db_save_scan(conn, scan_date, scan_time, DATA_SOURCE, partial=partial)
     db_save_nifty(conn, scan_id, nifty_ltp, nifty_change, nifty_dir, timestamp)
 
     total_fno_stocks_saved = 0
@@ -1501,22 +1589,22 @@ def run_scanner(
     seen_identifiers = set()
     for sort_by in ("volume", "value"):
         for contract in active_futures.get(sort_by, []):
-            c_id = contract.get("identifier") or (contract.get("underlying", "") + contract.get("expiryDate", ""))
+            c_id = contract.get("identifier") or (str(contract.get("underlying") or "") + str(contract.get("expiryDate") or ""))
             if c_id in seen_identifiers:
                 continue
             seen_identifiers.add(c_id)
-            u_sym = contract.get("underlying", "").strip().upper()
+            u_sym = str(contract.get("underlying") or "").strip().upper()
             future_rows.append((
                 scan_id,
                 u_sym,
                 contract.get("instrument", ""),
                 contract.get("expiryDate", ""),
-                float(contract.get("lastPrice", 0) or 0),
-                float(contract.get("pChange", 0) or 0),
-                int(contract.get("numberOfContractsTraded", 0) or 0),
-                float(contract.get("totalTurnover", 0) or 0),
-                int(contract.get("openInterest", 0) or 0),
-                float(contract.get("underlyingValue", 0) or 0),
+                _f(contract.get("lastPrice")),
+                _f(contract.get("pChange")),
+                int(_f(contract.get("numberOfContractsTraded"))),
+                _f(contract.get("totalTurnover")),
+                int(_f(contract.get("openInterest"))),
+                _f(contract.get("underlyingValue")),
                 sort_by,
                 lot_sizes.get(u_sym),
                 timestamp,

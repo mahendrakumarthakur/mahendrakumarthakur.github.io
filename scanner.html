@@ -503,6 +503,18 @@ body {
   font-family: var(--font-mono);
   line-height: 1.6;
 }
+.partial-badge {
+  display: inline-block;
+  background: #92400e;
+  color: #fff;
+  font-size: .62rem;
+  font-weight: 600;
+  letter-spacing: .4px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  vertical-align: middle;
+  cursor: help;
+}
 
 /* Top Pick Widget in Nifty Strip */
 .top-pick-widget {
@@ -2735,8 +2747,11 @@ function onDateChange() {
 
   if (!date) return;
 
+  // scans.partial (v3+) may be absent in pre-v3 databases opened locally.
+  const hasPartial = db.exec(`SELECT COUNT(*) FROM pragma_table_info('scans') WHERE name='partial'`)[0]?.values[0][0] > 0;
+
   const rows = db.exec(`
-    SELECT s.scan_id, s.scan_time, n.ltp, n.change_pct, n.direction
+    SELECT s.scan_id, s.scan_time, n.ltp, n.change_pct, n.direction${hasPartial ? ', s.partial' : ''}
     FROM scans s
     LEFT JOIN nifty n ON s.scan_id = n.scan_id
     WHERE s.scan_date = ?
@@ -2745,12 +2760,12 @@ function onDateChange() {
 
   if (!rows.length) return;
   scanMetaMap = {};
-  rows[0].values.forEach(([sid, time, ltp, chg, dir], i) => {
+  rows[0].values.forEach(([sid, time, ltp, chg, dir, partial], i) => {
     const opt = document.createElement('option');
     opt.value = sid;
-    opt.textContent = time;
+    opt.textContent = time + (partial ? '  ⚠' : '');
     scanSel.appendChild(opt);
-    scanMetaMap[sid] = { time, ltp, chg, dir };
+    scanMetaMap[sid] = { time, ltp, chg, dir, partial };
   });
 
   // Auto-select latest
@@ -3774,11 +3789,14 @@ function rerender() {
   const scanRow = db.exec('SELECT * FROM scans WHERE scan_id = ?', [scanId]);
   const sr = scanRow[0]?.values[0] || [];
   let durSec = null;
+  let isPartial = false;
   if (scanRow.length && scanRow[0].columns) {
     const durIdx = scanRow[0].columns.indexOf('duration_seconds');
     if (durIdx !== -1 && sr[durIdx] != null) {
       durSec = parseFloat(sr[durIdx]);
     }
+    const pIdx = scanRow[0].columns.indexOf('partial');
+    if (pIdx !== -1) isPartial = !!parseInt(sr[pIdx], 10);
   }
 
   const niftyRows = db.exec('SELECT * FROM nifty WHERE scan_id = ?', [scanId]);
@@ -3789,7 +3807,7 @@ function rerender() {
     niftyChange = parseFloat(chg) || 0;
     niftyDir    = (dir || (niftyChange >= 0 ? 'POSITIVE' : 'NEGATIVE')).toUpperCase();
   }
-  renderNiftyStrip(niftyLtp, niftyChange, niftyDir, scanId, durSec);
+  renderNiftyStrip(niftyLtp, niftyChange, niftyDir, scanId, durSec, isPartial);
 
   /* ── 1b. Top Pick is computed after the on-screen rows are known (step 7b) ── */
 
@@ -4091,7 +4109,7 @@ function rerender() {
 /* ────────────────────────────────────────────
    Nifty strip renderer
    ──────────────────────────────────────────── */
-function renderNiftyStrip(ltp, chg, dir, scanId, durSec) {
+function renderNiftyStrip(ltp, chg, dir, scanId, durSec, isPartial) {
   document.getElementById('nifty-ltp').textContent = fmtNum(ltp);
 
   const chgEl = document.getElementById('nifty-change');
@@ -4105,8 +4123,11 @@ function renderNiftyStrip(ltp, chg, dir, scanId, durSec) {
   const scanDate = document.getElementById('date-select').value;
   const scanTime = document.getElementById('scan-select').options[document.getElementById('scan-select').selectedIndex]?.text?.slice(0,8) || '';
   const durStr = (durSec != null && !isNaN(durSec)) ? ` &nbsp;(${durSec.toFixed(1)}s)` : '';
+  const partialStr = isPartial
+    ? ` <span class="partial-badge" title="PARTIAL: some sector constituents missing (typical NSE open-window rebuild ~09:15-09:20). Treat sector composition as indicative only.">⚠ PARTIAL</span>`
+    : '';
   document.getElementById('nifty-meta').innerHTML =
-    `Scan #${scanId}${durStr}<br>${fmtDate(scanDate)} &nbsp;${scanTime}`;
+    `Scan #${scanId}${durStr}<br>${fmtDate(scanDate)} &nbsp;${scanTime} ${partialStr}`;
 }
 
 /* ────────────────────────────────────────────
