@@ -1,0 +1,8 @@
+# Scanner working files — the published history DB lives in data/market_scanner.db
+/market_scanner.db
+market_scanner.db-wal
+market_scanner.db-shm
+scan_output.txt
+cache/
+__pycache__/
+*.py[cod]

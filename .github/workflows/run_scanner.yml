@@ -26,6 +26,11 @@ jobs:
 
       - name: Run NSE Sector Scanner
         run: |
+          set -o pipefail
+          # Seed the working DB from the published history so this run APPENDS
+          # to it. Without this, a fresh runner creates an empty root DB and the
+          # publish step below would overwrite the history with it.
+          cp data/market_scanner.db market_scanner.db
           python nse_sector_scanner.py | tee scan_output.txt
           echo "## 📊 Scan Results" >> $GITHUB_STEP_SUMMARY
           echo '```text' >> $GITHUB_STEP_SUMMARY
@@ -33,8 +38,12 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           rm -f scan_output.txt
 
-      - name: Copy Database to data folder for GitHub Pages
+      - name: Publish database to data/ (GitHub Pages)
         run: |
+          # Force-checkpoint the WAL so every row from this run is inside the
+          # single .db file that gets committed (sql.js in scanner.html cannot
+          # read sidecar -wal files).
+          python -c "import sqlite3; db=sqlite3.connect('market_scanner.db'); db.execute('PRAGMA wal_checkpoint(TRUNCATE);'); db.close()"
           mkdir -p data
           cp market_scanner.db data/market_scanner.db
 
@@ -42,6 +51,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add market_scanner.db data/market_scanner.db
+          # Only the published copy in data/ is committed; the root working DB
+          # (and its -wal/-shm sidecars) stay untracked.
+          git add data/market_scanner.db
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update scan database" && git push)
-
