@@ -1554,9 +1554,26 @@ def run_scanner(
                FROM stocks GROUP BY scan_id ORDER BY scan_id DESC LIMIT 5
            );"""
     ).fetchone()[0] or 0
-    partial = 1 if (empty_sectors or (baseline >= 100 and distinct_now < baseline * 0.95)) else 0
+    # Determine which empty sectors are "real" F&O sectors (have historical presence)
+    real_empty_sectors = []
+    if empty_sectors:
+        placeholders = ",".join("?" for _ in empty_sectors)
+        real_empty_rows = conn.execute(
+            f"""SELECT DISTINCT sector_name FROM stocks
+               WHERE sector_name IN ({placeholders})
+               GROUP BY sector_name
+               HAVING COUNT(*) > 0""",
+            empty_sectors
+        ).fetchall()
+        real_empty_sectors = {r[0] for r in real_empty_rows}
+
+    partial = 1 if (real_empty_sectors or (baseline >= 100 and distinct_now < baseline * 0.95)) else 0
     if partial:
-        print(f"\n[!] Scan marked PARTIAL (symbols this scan: {distinct_now}, recent baseline: {baseline}). Treat sector composition as indicative only.")
+        msg = f"[!] Scan marked PARTIAL (symbols this scan: {distinct_now}, recent baseline: {baseline}"
+        if real_empty_sectors:
+            msg += f"; empty F&O sectors: {', '.join(sorted(real_empty_sectors))}"
+        msg += "). Treat sector composition as indicative only."
+        print(msg)
 
     scan_id = db_save_scan(conn, scan_date, scan_time, DATA_SOURCE, partial=partial)
     db_save_nifty(conn, scan_id, nifty_ltp, nifty_change, nifty_dir, timestamp)
